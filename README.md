@@ -224,11 +224,50 @@ Meridian demonstrates advanced agentic capabilities:
 - **Vector memory** for context-aware research synthesis
 
 ### Real-Time Transparency
-- **SSE streaming** of every reasoning step
+- **SSE + WebSocket streaming** of every reasoning step
 - **Live trace panel** showing tool calls, results, and intermediate thoughts
 - **Progressive brief rendering** as conclusions are formed
+- **Self-reflection checkpoints** every 5 steps with GLM-5.1 self-evaluation
+
+### Real-Time Communication
+- **WebSocket support** for bidirectional communication
+- **Broadcast channel** for multi-client collaboration
+- **Automatic reconnection** with configurable attempts
+- **Lower latency** than SSE for real-time updates
+
+## 📊 Advanced Visualizations
+
+Meridian includes professional-grade charts powered by Recharts:
+
+- **Radar Chart**: 5-dimension regime visualization with animated radar plot
+- **Time Series Charts**: Single/multi-series plots with threshold indicators
+- **Gauge Charts**: Single metric visualization with color-coded zones
+- **Area Charts**: Filled area plots for trends over time
+
+All charts feature:
+- Smooth animations on load
+- Custom tooltips with color coding
+- Responsive design
+- Dark theme optimized
 
 ## 🧩 GLM-5.1 Integration Deep Dive
+
+### Chain-of-Thought Reasoning
+
+Meridian enhances GLM-5.1's reasoning with explicit chain-of-thought guidance:
+
+```
+User Question → GLM-5.1 Planning → Tool Execution → Result Synthesis →
+Self-Reflection → Continue or Conclude → Final Brief
+```
+
+**Self-Reflection Checkpoints**: Every 5 tool calls, GLM-5.1 evaluates:
+- Do I have sufficient evidence?
+- Are there contradictory signals?
+- Is my confidence justified?
+- Should I gather more data?
+
+This ensures high-quality, well-researched outputs.
 
 ### ReAct Agent Pattern
 
