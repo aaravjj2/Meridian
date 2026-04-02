@@ -208,6 +208,26 @@ Ranked market dislocations with AI explanations
 
 ---
 
+## 🔬 System Depth
+
+Meridian demonstrates advanced agentic capabilities:
+
+### Advanced Analytics
+- **Cross-Series Correlation**: Identify leading indicators across economic time series
+- **Composite Indicator Builder**: Normalize and weight multiple indicators into custom indices
+- **Regime Transition Probability**: Estimate macro regime change risk using multi-signal analysis
+
+### Tool Complexity
+- **10 specialized tools** spanning data ingestion, analysis, and synthesis
+- **25-step reasoning depth** with autonomous tool selection
+- **Schema validation** enforcing citation requirements for every claim
+- **Vector memory** for context-aware research synthesis
+
+### Real-Time Transparency
+- **SSE streaming** of every reasoning step
+- **Live trace panel** showing tool calls, results, and intermediate thoughts
+- **Progressive brief rendering** as conclusions are formed
+
 ## 🧩 GLM-5.1 Integration Deep Dive
 
 ### ReAct Agent Pattern
@@ -235,13 +255,16 @@ while tool_calls < max_tool_calls:
 
 | Tool | Purpose | Data Source |
 |------|---------|-------------|
-| `fred_query` | Economic indicators | Federal Reserve Economic Data |
-| `edgar_search` | SEC filings | EDGAR database |
-| `kalshi_markets` | Prediction markets | Kalshi exchange |
-| `polymarket_markets` | Prediction markets | Polymarket |
-| `news_search` | News articles | Curated financial news |
-| `regime_snapshot` | Macro regime | Composite indicators |
-| `screener_ranks` | Dislocation ranking | Model vs market comparison |
+| `fred_fetch` | Economic indicators | Federal Reserve Economic Data |
+| `fred_search` | Search FRED metadata | Federal Reserve Economic Data |
+| `edgar_fetch` | SEC filings | EDGAR database |
+| `prediction_market_fetch` | Prediction markets | Kalshi / Polymarket |
+| `news_fetch` | News articles | Curated financial news |
+| `vector_search` | Semantic memory | ChromaDB vector store |
+| `compute_feature` | Macro features | FRED computed indicators |
+| `correlation_analysis` | Cross-series correlation | Multi-series FRED analysis |
+| `composite_indicator` | Normalized composite | Multi-series weighted index |
+| `regime_transition_probability` | Regime change risk | Multi-indicator signal aggregation |
 
 ---
 
