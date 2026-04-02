@@ -62,6 +62,7 @@ class ResearchBrief(BaseModel):
     key_risks: list[RiskPoint]
     confidence: int = Field(ge=1, le=5)
     confidence_rationale: str
+    methodology_summary: str | None = None
     sources: list[SourceRef]
     created_at: str
     trace_steps: list[int] = Field(default_factory=list)
@@ -79,7 +80,7 @@ class ResearchBrief(BaseModel):
 
 class TraceStep(BaseModel):
     step_index: int = Field(ge=0)
-    type: Literal["tool_call", "tool_result", "reasoning", "brief_delta", "complete", "error"]
+    type: Literal["tool_call", "tool_result", "reasoning", "brief_delta", "complete", "error", "reflection"]
     tool_name: str | None = None
     tool_args: dict | None = None
     content: str | dict | list | None = None

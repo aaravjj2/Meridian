@@ -10,7 +10,7 @@ from typing import Any, AsyncGenerator
 
 import httpx
 
-from meridian.agent.prompt import build_system_prompt
+from meridian.agent.prompt import build_reflection_prompt, build_system_prompt
 from meridian.agent.tools import ToolExecutor
 from meridian.normalisation.schemas import ResearchBrief, TraceStep
 from meridian.settings import FIXTURES_DIR, is_demo_mode
@@ -56,12 +56,17 @@ class ResearchAgent:
         max_tool_calls: int = 25,
         trace_path: Path | None = None,
         tool_executor: ToolExecutor | None = None,
+        enable_reflection: bool = True,
+        reflection_interval: int = 5,
     ) -> None:
         self.demo_mode = is_demo_mode() if demo_mode is None else demo_mode
         self.demo_delay_seconds = demo_delay_seconds
         self.max_tool_calls = max_tool_calls
         self.trace_path = trace_path or (FIXTURES_DIR / "traces" / "demo_trace.json")
         self.tools = tool_executor or ToolExecutor(demo_mode=self.demo_mode)
+        self.enable_reflection = enable_reflection
+        self.reflection_interval = reflection_interval
+        self.tools_called: list[str] = []
 
     async def call_glm(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], stream: bool = True) -> httpx.Response:
         api_key = os.getenv("ZAI_API_KEY", "").strip()
@@ -227,6 +232,28 @@ class ResearchAgent:
                             "content": json.dumps(result),
                         }
                     )
+
+                    self.tools_called.append(name)
+
+                    # Self-reflection checkpoint at intervals
+                    if (
+                        self.enable_reflection
+                        and tool_calls % self.reflection_interval == 0
+                        and tool_calls < self.max_tool_calls
+                    ):
+                        yield TraceStep(
+                            step_index=step_index,
+                            type="reflection",
+                            tool_name=name,
+                            tool_args=args,
+                            content={
+                                "step": tool_calls,
+                                "tools_used": self.tools_called.copy(),
+                                "message": "Reflection checkpoint: evaluating if sufficient data gathered",
+                            },
+                            timestamp=_iso_now(),
+                        )
+                        step_index += 1
 
                     if tool_calls >= self.max_tool_calls:
                         break
