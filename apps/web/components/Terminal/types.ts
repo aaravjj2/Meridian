@@ -1,5 +1,5 @@
 export type TraceEvent = {
-  type: 'tool_call' | 'tool_result' | 'reasoning' | 'brief_delta' | 'complete' | 'error'
+  type: 'tool_call' | 'tool_result' | 'reasoning' | 'brief_delta' | 'complete' | 'error' | 'reflection'
   step: number
   ts: string
   tool?: string
@@ -10,6 +10,12 @@ export type TraceEvent = {
   brief?: ResearchBrief
   duration_ms?: number
   message?: string
+  content?: {
+    step?: number
+    tools_used?: string[] | string
+    message?: string
+    [key: string]: unknown
+  }
 }
 
 export type BriefPoint = {
