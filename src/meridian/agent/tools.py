@@ -6,7 +6,17 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from meridian.features.compute import credit_stress, inflation_momentum, monetary_regime, yield_curve_slope
+from meridian.features.compute import (
+    composite_indicator,
+    credit_stress,
+    inflation_momentum,
+    monetary_regime,
+    regime_transition_probability,
+    yield_curve_slope,
+)
+
+# Import cross_series_correlation with a compatible name
+from meridian.features.compute import cross_series_correlation as correlation_analysis
 from meridian.ingestion.edgar import EdgarClient
 from meridian.ingestion.fred import FredClient
 from meridian.ingestion.kalshi import KalshiClient
@@ -49,6 +59,21 @@ class VectorSearchInput(BaseModel):
 class ComputeFeatureInput(BaseModel):
     series_id: str
     feature_name: str
+
+
+class CorrelationAnalysisInput(BaseModel):
+    series_ids: list[str] = Field(description="List of FRED series IDs to analyze")
+    lookback_periods: int = Field(default=52, ge=12, le=260)
+
+
+class CompositeIndicatorInput(BaseModel):
+    series_ids: list[str] = Field(description="List of FRED series IDs to combine")
+    weights: dict[str, float] | None = Field(default=None, description="Optional weights for each series")
+    lookback_periods: int = Field(default=12, ge=4, le=52)
+
+
+class RegimeTransitionInput(BaseModel):
+    lookback_weeks: int = Field(default=104, ge=12, le=260)
 
 
 @dataclass(slots=True)
@@ -122,6 +147,24 @@ class ToolExecutor:
                 description="Compute a macro feature from a FRED series.",
                 input_model=ComputeFeatureInput,
                 runner=self._run_compute_feature,
+            ),
+            ToolDefinition(
+                name="correlation_analysis",
+                description="Analyze correlations between multiple FRED series to identify relationships and leading indicators.",
+                input_model=CorrelationAnalysisInput,
+                runner=self._run_correlation_analysis,
+            ),
+            ToolDefinition(
+                name="composite_indicator",
+                description="Build a composite indicator from multiple economic series, normalizing to z-scores and combining with optional weights.",
+                input_model=CompositeIndicatorInput,
+                runner=self._run_composite_indicator,
+            ),
+            ToolDefinition(
+                name="regime_transition_probability",
+                description="Estimate the probability of macro regime transition using multiple leading indicators and stress signals.",
+                input_model=RegimeTransitionInput,
+                runner=self._run_regime_transition_probability,
             ),
         ]
 
@@ -223,3 +266,26 @@ class ToolExecutor:
         if feature == "monetary_regime":
             return monetary_regime(frame)
         raise ValueError(f"Unsupported feature_name: {payload.feature_name}")
+
+    def _run_correlation_analysis(self, payload: CorrelationAnalysisInput) -> dict[str, Any]:
+        series_dict = {}
+        for series_id in payload.series_ids:
+            series_dict[series_id] = self.fred.fetch_series(series_id)
+        return cross_series_correlation(series_dict, lookback_periods=payload.lookback_periods)
+
+    def _run_composite_indicator(self, payload: CompositeIndicatorInput) -> dict[str, Any]:
+        series_dict = {}
+        for series_id in payload.series_ids:
+            series_dict[series_id] = self.fred.fetch_series(series_id)
+        return composite_indicator(series_dict, weights=payload.weights, lookback_periods=payload.lookback_periods)
+
+    def _run_regime_transition_probability(self, payload: RegimeTransitionInput) -> dict[str, Any]:
+        # Fetch all key series for regime analysis
+        series_dict = {
+            "T10Y2Y": self.fred.fetch_series("T10Y2Y"),
+            "CPIAUCSL": self.fred.fetch_series("CPIAUCSL"),
+            "FEDFUNDS": self.fred.fetch_series("FEDFUNDS"),
+            "BAMLH0A0HYM2": self.fred.fetch_series("BAMLH0A0HYM2"),
+            "UNRATE": self.fred.fetch_series("UNRATE"),
+        }
+        return regime_transition_probability(series_dict, lookback_weeks=payload.lookback_weeks)
