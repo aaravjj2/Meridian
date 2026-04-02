@@ -1,0 +1,13 @@
+{
+  "series_id": "T10Y2Y",
+  "name": "10-Year Treasury Constant Maturity Minus 2-Year Treasury",
+  "frequency": "Daily",
+  "observations": [
+    {"date": "2025-09-15", "value": "-0.46"},
+    {"date": "2025-10-15", "value": "-0.42"},
+    {"date": "2025-11-15", "value": "-0.38"},
+    {"date": "2025-12-15", "value": "-0.35"},
+    {"date": "2026-01-15", "value": "-0.29"},
+    {"date": "2026-02-15", "value": "-0.21"}
+  ]
+}

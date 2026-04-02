@@ -1,0 +1,18 @@
+
+> vitest
+> vitest run --config vitest.config.ts
+
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /home/aarav/Aarav/Meridian
+
+ ✓ tests/unit/web/TracePanel.test.tsx (1 test) 28ms
+ ✓ tests/unit/web/RegimeDashboard.test.tsx (1 test) 43ms
+ ✓ tests/unit/web/ResearchPanel.test.tsx (1 test) 32ms
+ ✓ tests/unit/web/Screener.test.tsx (1 test) 91ms
+
+ Test Files  4 passed (4)
+      Tests  4 passed (4)
+   Start at  02:26:04
+   Duration  864ms (transform 132ms, setup 259ms, collect 632ms, tests 195ms, environment 1.05s, prepare 386ms)
+

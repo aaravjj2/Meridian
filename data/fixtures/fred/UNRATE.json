@@ -1,0 +1,13 @@
+{
+  "series_id": "UNRATE",
+  "name": "Unemployment Rate",
+  "frequency": "Monthly",
+  "observations": [
+    {"date": "2025-09-01", "value": "4.1"},
+    {"date": "2025-10-01", "value": "4.0"},
+    {"date": "2025-11-01", "value": "4.0"},
+    {"date": "2025-12-01", "value": "4.1"},
+    {"date": "2026-01-01", "value": "4.2"},
+    {"date": "2026-02-01", "value": "4.2"}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "ticker": "AAPL",
+  "form_type": "10-K",
+  "filed_date": "2025-11-01",
+  "accession_number": "0000320193-25-000101",
+  "text_chunks": [
+    "Apple reported durable Services growth, offsetting softer hardware unit growth in selected geographies.",
+    "Gross margin remained resilient due to product mix and supply chain optimization, while FX remained a headwind.",
+    "Capital return stayed central, including dividends and repurchases, with a continued focus on balance sheet flexibility.",
+    "Management highlighted demand sensitivity to financing costs and consumer confidence in developed markets.",
+    "Risk factors emphasized regulatory shifts, global trade friction, and concentration risks in advanced semiconductor supply."
+  ]
+}

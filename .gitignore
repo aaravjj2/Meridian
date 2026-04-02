@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+.next/
+coverage/
+playwright-report/
+playwright/.cache/
+
+# Runtime and artifacts
+.env
+.env.*
+*.parquet
+chroma_db/
+data/processed/
+artifacts/proof/*/
+!artifacts/proof/.gitkeep
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,77 @@
+[
+  {
+    "condition_id": "pm-fed-cut-june-2026",
+    "title": "Fed cuts rates by at least 50bps before July 2026",
+    "category": "fed_policy",
+    "resolution_date": "2026-06-30",
+    "market_probability": 0.67,
+    "volume_usd": 1820000,
+    "open_interest": 640000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"ts": "2026-03-25T16:00:00Z", "price": 0.63},
+      {"ts": "2026-03-28T16:00:00Z", "price": 0.65},
+      {"ts": "2026-03-31T16:00:00Z", "price": 0.67}
+    ]
+  },
+  {
+    "condition_id": "pm-cpi-over-3-q2-2026",
+    "title": "CPI YoY above 3% in Q2 2026",
+    "category": "inflation",
+    "resolution_date": "2026-07-15",
+    "market_probability": 0.44,
+    "volume_usd": 980000,
+    "open_interest": 350000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"ts": "2026-03-25T16:00:00Z", "price": 0.47},
+      {"ts": "2026-03-28T16:00:00Z", "price": 0.45},
+      {"ts": "2026-03-31T16:00:00Z", "price": 0.44}
+    ]
+  },
+  {
+    "condition_id": "pm-unrate-above-48-q3-2026",
+    "title": "Unemployment above 4.8% by Q3 2026",
+    "category": "employment",
+    "resolution_date": "2026-09-30",
+    "market_probability": 0.39,
+    "volume_usd": 710000,
+    "open_interest": 265000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"ts": "2026-03-25T16:00:00Z", "price": 0.33},
+      {"ts": "2026-03-28T16:00:00Z", "price": 0.36},
+      {"ts": "2026-03-31T16:00:00Z", "price": 0.39}
+    ]
+  },
+  {
+    "condition_id": "pm-recession-2026",
+    "title": "US recession starts in 2026",
+    "category": "recession",
+    "resolution_date": "2026-12-31",
+    "market_probability": 0.33,
+    "volume_usd": 840000,
+    "open_interest": 290000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"ts": "2026-03-25T16:00:00Z", "price": 0.28},
+      {"ts": "2026-03-28T16:00:00Z", "price": 0.31},
+      {"ts": "2026-03-31T16:00:00Z", "price": 0.33}
+    ]
+  },
+  {
+    "condition_id": "pm-gdp-neg-q4-2026",
+    "title": "Real GDP growth negative in Q4 2026",
+    "category": "gdp",
+    "resolution_date": "2026-12-31",
+    "market_probability": 0.24,
+    "volume_usd": 520000,
+    "open_interest": 170000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"ts": "2026-03-25T16:00:00Z", "price": 0.20},
+      {"ts": "2026-03-28T16:00:00Z", "price": 0.22},
+      {"ts": "2026-03-31T16:00:00Z", "price": 0.24}
+    ]
+  }
+]

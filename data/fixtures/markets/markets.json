@@ -1,0 +1,162 @@
+[
+  {
+    "id": "KXFEDCUT-H1-2026",
+    "platform": "kalshi",
+    "title": "Will the Fed cut rates by 50bps by June 2026?",
+    "category": "fed_policy",
+    "resolution_date": "2026-06-30",
+    "market_probability": 0.64,
+    "volume_usd": 1250000,
+    "open_interest": 420000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"date": "2026-03-25", "value": 0.59},
+      {"date": "2026-03-28", "value": 0.62},
+      {"date": "2026-03-31", "value": 0.64}
+    ]
+  },
+  {
+    "id": "KXINFL-Q2-2026",
+    "platform": "kalshi",
+    "title": "Will CPI YoY print above 3.0% in Q2 2026?",
+    "category": "inflation",
+    "resolution_date": "2026-07-15",
+    "market_probability": 0.41,
+    "volume_usd": 910000,
+    "open_interest": 305000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"date": "2026-03-25", "value": 0.45},
+      {"date": "2026-03-28", "value": 0.43},
+      {"date": "2026-03-31", "value": 0.41}
+    ]
+  },
+  {
+    "id": "KXUNEMP-Q3-2026",
+    "platform": "kalshi",
+    "title": "Will unemployment exceed 4.8% by Q3 2026?",
+    "category": "employment",
+    "resolution_date": "2026-09-30",
+    "market_probability": 0.36,
+    "volume_usd": 620000,
+    "open_interest": 210000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"date": "2026-03-25", "value": 0.31},
+      {"date": "2026-03-28", "value": 0.34},
+      {"date": "2026-03-31", "value": 0.36}
+    ]
+  },
+  {
+    "id": "KXREC-2026",
+    "platform": "kalshi",
+    "title": "Will the NBER declare recession starting in 2026?",
+    "category": "recession",
+    "resolution_date": "2026-12-31",
+    "market_probability": 0.29,
+    "volume_usd": 740000,
+    "open_interest": 255000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"date": "2026-03-25", "value": 0.25},
+      {"date": "2026-03-28", "value": 0.27},
+      {"date": "2026-03-31", "value": 0.29}
+    ]
+  },
+  {
+    "id": "KXGDP-NEG-2026Q4",
+    "platform": "kalshi",
+    "title": "Will real GDP growth print negative in Q4 2026?",
+    "category": "gdp",
+    "resolution_date": "2026-12-31",
+    "market_probability": 0.22,
+    "volume_usd": 410000,
+    "open_interest": 146000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"date": "2026-03-25", "value": 0.18},
+      {"date": "2026-03-28", "value": 0.20},
+      {"date": "2026-03-31", "value": 0.22}
+    ]
+  },
+  {
+    "id": "pm-fed-cut-june-2026",
+    "platform": "polymarket",
+    "title": "Fed cuts rates by at least 50bps before July 2026",
+    "category": "fed_policy",
+    "resolution_date": "2026-06-30",
+    "market_probability": 0.67,
+    "volume_usd": 1820000,
+    "open_interest": 640000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"date": "2026-03-25", "value": 0.63},
+      {"date": "2026-03-28", "value": 0.65},
+      {"date": "2026-03-31", "value": 0.67}
+    ]
+  },
+  {
+    "id": "pm-cpi-over-3-q2-2026",
+    "platform": "polymarket",
+    "title": "CPI YoY above 3% in Q2 2026",
+    "category": "inflation",
+    "resolution_date": "2026-07-15",
+    "market_probability": 0.44,
+    "volume_usd": 980000,
+    "open_interest": 350000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"date": "2026-03-25", "value": 0.47},
+      {"date": "2026-03-28", "value": 0.45},
+      {"date": "2026-03-31", "value": 0.44}
+    ]
+  },
+  {
+    "id": "pm-unrate-above-48-q3-2026",
+    "platform": "polymarket",
+    "title": "Unemployment above 4.8% by Q3 2026",
+    "category": "employment",
+    "resolution_date": "2026-09-30",
+    "market_probability": 0.39,
+    "volume_usd": 710000,
+    "open_interest": 265000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"date": "2026-03-25", "value": 0.33},
+      {"date": "2026-03-28", "value": 0.36},
+      {"date": "2026-03-31", "value": 0.39}
+    ]
+  },
+  {
+    "id": "pm-recession-2026",
+    "platform": "polymarket",
+    "title": "US recession starts in 2026",
+    "category": "recession",
+    "resolution_date": "2026-12-31",
+    "market_probability": 0.33,
+    "volume_usd": 840000,
+    "open_interest": 290000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"date": "2026-03-25", "value": 0.28},
+      {"date": "2026-03-28", "value": 0.31},
+      {"date": "2026-03-31", "value": 0.33}
+    ]
+  },
+  {
+    "id": "pm-gdp-neg-q4-2026",
+    "platform": "polymarket",
+    "title": "Real GDP growth negative in Q4 2026",
+    "category": "gdp",
+    "resolution_date": "2026-12-31",
+    "market_probability": 0.24,
+    "volume_usd": 520000,
+    "open_interest": 170000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"date": "2026-03-25", "value": 0.20},
+      {"date": "2026-03-28", "value": 0.22},
+      {"date": "2026-03-31", "value": 0.24}
+    ]
+  }
+]

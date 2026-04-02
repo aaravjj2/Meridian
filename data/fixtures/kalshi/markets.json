@@ -1,0 +1,77 @@
+[
+  {
+    "ticker": "KXFEDCUT-H1-2026",
+    "title": "Will the Fed cut rates by 50bps by June 2026?",
+    "category": "fed_policy",
+    "resolution_date": "2026-06-30",
+    "market_probability": 0.64,
+    "volume_usd": 1250000,
+    "open_interest": 420000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"ts": "2026-03-25T16:00:00Z", "price": 0.59},
+      {"ts": "2026-03-28T16:00:00Z", "price": 0.62},
+      {"ts": "2026-03-31T16:00:00Z", "price": 0.64}
+    ]
+  },
+  {
+    "ticker": "KXINFL-Q2-2026",
+    "title": "Will CPI YoY print above 3.0% in Q2 2026?",
+    "category": "inflation",
+    "resolution_date": "2026-07-15",
+    "market_probability": 0.41,
+    "volume_usd": 910000,
+    "open_interest": 305000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"ts": "2026-03-25T16:00:00Z", "price": 0.45},
+      {"ts": "2026-03-28T16:00:00Z", "price": 0.43},
+      {"ts": "2026-03-31T16:00:00Z", "price": 0.41}
+    ]
+  },
+  {
+    "ticker": "KXUNEMP-Q3-2026",
+    "title": "Will unemployment exceed 4.8% by Q3 2026?",
+    "category": "employment",
+    "resolution_date": "2026-09-30",
+    "market_probability": 0.36,
+    "volume_usd": 620000,
+    "open_interest": 210000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"ts": "2026-03-25T16:00:00Z", "price": 0.31},
+      {"ts": "2026-03-28T16:00:00Z", "price": 0.34},
+      {"ts": "2026-03-31T16:00:00Z", "price": 0.36}
+    ]
+  },
+  {
+    "ticker": "KXREC-2026",
+    "title": "Will the NBER declare recession starting in 2026?",
+    "category": "recession",
+    "resolution_date": "2026-12-31",
+    "market_probability": 0.29,
+    "volume_usd": 740000,
+    "open_interest": 255000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"ts": "2026-03-25T16:00:00Z", "price": 0.25},
+      {"ts": "2026-03-28T16:00:00Z", "price": 0.27},
+      {"ts": "2026-03-31T16:00:00Z", "price": 0.29}
+    ]
+  },
+  {
+    "ticker": "KXGDP-NEG-2026Q4",
+    "title": "Will real GDP growth print negative in Q4 2026?",
+    "category": "gdp",
+    "resolution_date": "2026-12-31",
+    "market_probability": 0.22,
+    "volume_usd": 410000,
+    "open_interest": 146000,
+    "last_updated": "2026-03-31T16:00:00Z",
+    "history": [
+      {"ts": "2026-03-25T16:00:00Z", "price": 0.18},
+      {"ts": "2026-03-28T16:00:00Z", "price": 0.20},
+      {"ts": "2026-03-31T16:00:00Z", "price": 0.22}
+    ]
+  }
+]

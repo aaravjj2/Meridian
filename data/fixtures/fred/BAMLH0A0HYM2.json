@@ -1,0 +1,13 @@
+{
+  "series_id": "BAMLH0A0HYM2",
+  "name": "ICE BofA US High Yield Index Option-Adjusted Spread",
+  "frequency": "Daily",
+  "observations": [
+    {"date": "2025-09-15", "value": "3.75"},
+    {"date": "2025-10-15", "value": "3.82"},
+    {"date": "2025-11-15", "value": "3.95"},
+    {"date": "2025-12-15", "value": "4.02"},
+    {"date": "2026-01-15", "value": "4.10"},
+    {"date": "2026-02-15", "value": "4.06"}
+  ]
+}

@@ -1,0 +1,4 @@
+
+> tsc
+> tsc -p apps/web/tsconfig.json --noEmit
+
