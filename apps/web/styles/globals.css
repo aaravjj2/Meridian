@@ -612,6 +612,149 @@ a {
   padding: var(--space-2);
 }
 
+/* Radar Chart Styles */
+.radar-chart-container {
+  width: 100%;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--bg-elevated) 30%, transparent);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+}
+
+.radar-axis-label text {
+  fill: var(--text-secondary);
+  font-size: 11px;
+}
+
+/* Time Series Chart Styles */
+.timeseries-chart {
+  width: 100%;
+  padding: var(--space-3);
+  background: color-mix(in srgb, var(--bg-elevated) 30%, transparent);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+}
+
+.chart-title {
+  margin: 0 0 var(--space-3) 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.custom-tooltip {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.tooltip-date {
+  margin: 0 0 var(--space-1) 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.tooltip-value {
+  margin: 0;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tooltip-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.multi-series .tooltip-value {
+  gap: var(--space-3);
+}
+
+/* Gauge Chart Styles */
+.gauge-chart {
+  width: 100%;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--bg-elevated) 30%, transparent);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+}
+
+.gauge-container {
+  position: relative;
+  display: inline-block;
+}
+
+.gauge-svg {
+  width: 100%;
+  max-width: 250px;
+  height: auto;
+}
+
+.gauge-value-arc {
+  animation: gaugeFill 1s ease-out;
+}
+
+@keyframes gaugeFill {
+  from {
+    stroke-dashoffset: 251.2;
+  }
+  to {
+    stroke-dashoffset: var(--target-offset, 0);
+  }
+}
+
+.gauge-value-text {
+  fill: var(--text-primary);
+  font-size: 32px;
+  font-weight: 600;
+  font-family: var(--font-mono), monospace;
+}
+
+.gauge-label-text {
+  fill: var(--text-secondary);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.gauge-legend {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.gauge-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Chart animations */
+.timeseries-chart,
+.radar-chart-container,
+.gauge-chart {
+  animation: fadeInUp 400ms ease-out;
+}
+
 .screener-page {
   padding-bottom: var(--space-12);
 }
