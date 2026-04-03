@@ -4,6 +4,6 @@ test('methodology page renders', async ({ page }) => {
   await page.goto('/methodology')
 
   await expect(page.getByTestId('methodology-page')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'How Meridian Works' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Data Sources' })).toBeVisible()
+  await expect(page.getByTestId('methodology-heading-how')).toBeVisible()
+  await expect(page.getByTestId('methodology-heading-data-sources')).toBeVisible()
 })

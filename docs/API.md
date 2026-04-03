@@ -1,41 +1,29 @@
 # Meridian API Documentation
 
-GLM-5.1 Powered Financial Research Terminal API
-
 ## Overview
 
-Meridian provides a RESTful API with real-time streaming capabilities for financial research powered by GLM-5.1 agentic reasoning.
+Meridian exposes a deterministic demo-friendly API for macro research and market dislocation analysis.
 
-**Base URL**: `http://localhost:8000` (default)
-**API Version**: v1
-**Model**: GLM-5.1 by Z.ai
-
----
+- Base URL (local): http://localhost:8000
+- API prefix: /api/v1
+- OpenAPI docs: /docs
+- ReDoc: /redoc
 
 ## Authentication
 
-The API supports both demo mode (no authentication) and live mode (requires `ZAI_API_KEY`).
+There is currently no request-level auth enforced by API routes.
 
-### Headers
-
-```http
-Authorization: Bearer YOUR_ZAI_API_KEY
-Content-Type: application/json
-```
-
----
+- Demo mode: no secrets required
+- Live mode: server-side GLM calls require ZAI_API_KEY in backend environment
 
 ## Endpoints
 
-### Health Check
+### GET /api/v1/health
 
-```http
-GET /api/v1/health
-```
+Returns service status and active runtime mode.
 
-Check API health status.
+Response:
 
-**Response**:
 ```json
 {
   "status": "ok",
@@ -44,17 +32,12 @@ Check API health status.
 }
 ```
 
----
+### GET /api/v1/metadata
 
-### Metadata
+Returns static metadata and capability flags.
 
-```http
-GET /api/v1/metadata
-```
+Response:
 
-Get API metadata and capabilities.
-
-**Response**:
 ```json
 {
   "version": "0.1.0",
@@ -65,188 +48,170 @@ Get API metadata and capabilities.
 }
 ```
 
----
+### POST /api/v1/research
 
-### Research Query (SSE)
+Starts a research run and streams trace events using Server-Sent Events.
 
-```http
-POST /api/v1/research
-Content-Type: application/json
-```
+Request body:
 
-Start a GLM-5.1 research query with Server-Sent Events streaming.
-
-**Request Body**:
 ```json
 {
-  "question": "What is the current recession probability?"
+  "question": "What does the current yield curve shape imply for equities over the next 6 months?",
+  "mode": "demo"
 }
 ```
 
-**Response**: `text/event-stream` stream
+Request constraints:
 
-**Event Types**:
-- `tool_call`: GLM-5.1 calls a tool
-- `tool_result`: Tool execution result
-- `reasoning`: GLM-5.1's reasoning
-- `reflection`: Self-reflection checkpoint
-- `brief_delta`: Brief being constructed
-- `complete`: Research complete with final brief
+- question: required, minimum length 3
+- mode: optional, defaults to demo
 
-**Example Event**:
-```
-event: trace
-data: {"step_index": 1, "type": "tool_call", "tool_name": "fred_fetch", ...}
-```
+Response content type:
 
----
+- text/event-stream
 
-### Screener
+Wire format:
 
-```http
-GET /api/v1/screener
-```
+- each frame is emitted as data: <json>\n\n
+- there is no event: field currently emitted
 
-Get ranked market dislocations (model probability vs market probability).
+Event payload baseline:
 
-**Query Parameters**:
-- `limit` (optional): Number of results (default: 50)
-- `min_dislocation` (optional): Minimum gap threshold (default: 0.1)
-
-**Response**:
 ```json
 {
-  "markets": [
+  "type": "tool_call|tool_result|reasoning|brief_delta|complete|error|reflection",
+  "step": 0,
+  "ts": "2026-04-02T00:00:00Z"
+}
+```
+
+Type-specific fields:
+
+- tool_call: tool, args
+- tool_result: tool, preview
+- reasoning: text
+- brief_delta: section, text
+- complete: brief, duration_ms
+- error: message
+
+Semantics:
+
+- hard timeout: 120 seconds
+- on timeout/error, an error event is emitted
+- complete is always emitted before stream termination (success or fallback)
+
+### GET /api/v1/screener
+
+Returns ranked dislocation contracts from fixture-backed snapshot in demo mode.
+
+Query parameters:
+
+- category: optional string exact match
+- platform: optional string exact match (kalshi or polymarket)
+- min_dislocation: optional float, default 0.0, minimum 0.0
+- limit: optional integer, default 20, range 1..200
+
+Response shape:
+
+```json
+{
+  "contracts": [
     {
-      "id": "kalshi-fed-rate-cut",
-      "title": "Fed will cut rates by June",
-      "platform": "kalshi",
-      "market_prob": 0.35,
-      "model_prob": 0.62,
-      "dislocation": 0.27,
-      "direction": "market_underpriced",
-      "explanation": "Model suggests higher probability...",
-      "confidence": 4
+      "market_id": "pm-fed-cut-june-2026",
+      "platform": "polymarket",
+      "category": "fed_policy",
+      "title": "Fed cuts rates by at least 50bps before July 2026",
+      "resolution_date": "2026-06-30",
+      "market_prob": 0.67,
+      "model_prob": 0.41,
+      "dislocation": 0.26,
+      "direction": "market_overpriced",
+      "explanation": "Model probability differs by 26.0pp from market-implied odds, indicating potential overpricing.",
+      "confidence": 4,
+      "scored_at": "2026-04-02T00:00:00Z"
     }
   ],
-  "total": 42
+  "scored_at": "2026-04-02T00:00:00Z",
+  "count": 1
 }
 ```
 
----
+### GET /api/v1/regime
 
-### Regime Snapshot
+Returns current five-dimension regime snapshot.
 
-```http
-GET /api/v1/regime
-```
+Response:
 
-Get current macro regime across 5 dimensions.
-
-**Response**:
 ```json
 {
   "dimensions": {
     "growth": "EXPANSION",
-    "inflation": "COOLING",
+    "inflation": "ELEVATED",
     "monetary": "RESTRICTIVE",
-    "credit": "NORMAL",
-    "labor": "SOFTENING"
+    "credit": "CAUTION",
+    "labor": "TIGHT"
   },
-  "narrative": "Economy shows expansion but with tightening...",
-  "updated_at": "2026-04-02T12:00:00Z"
+  "narrative": "Growth remains positive but decelerating while restrictive policy and moderately wider credit spreads keep recession risk elevated.",
+  "updated_at": "2026-04-02T00:00:00Z"
 }
 ```
 
----
+### GET /api/v1/markets
 
-### Markets
+Lists normalized market contracts with optional filters and pagination.
 
-```http
-GET /api/v1/markets
-```
+Query parameters:
 
-List all prediction markets.
+- category: optional string exact match
+- platform: optional string exact match
+- page: optional integer, default 1, minimum 1
+- page_size: optional integer, default 20, range 1..100
 
-**Query Parameters**:
-- `page` (optional): Page number (default: 1)
-- `limit` (optional): Items per page (default: 20)
-- `platform` (optional): Filter by platform (kalshi, polymarket)
+Response:
 
-**Response**:
 ```json
 {
-  "markets": [...],
+  "markets": [],
+  "count": 10,
   "page": 1,
-  "limit": 20,
-  "total": 156
+  "page_size": 20
 }
 ```
 
----
+### GET /api/v1/markets/{market_id}
 
-### Market Detail
+Returns market detail for a single id.
 
-```http
-GET /api/v1/markets/{market_id}
-```
+Success response includes canonical fields:
 
-Get specific market details with history.
+- id, platform, title, category, resolution_date
+- market_probability, volume_usd, open_interest, last_updated
+- history
 
-**Response**:
-```json
-{
-  "id": "kalshi-recession-2026",
-  "title": "US recession in 2026",
-  "platform": "kalshi",
-  "category": "economics",
-  "resolution_date": "2027-01-01",
-  "market_probability": 0.25,
-  "volume_usd": 125000,
-  "open_interest": 45000,
-  "history": [
-    {"date": "2026-03-01", "value": 0.22},
-    {"date": "2026-03-15", "value": 0.25}
-  ]
-}
-```
+Error response:
 
----
+- 404 with detail: Market not found: {market_id}
 
-### Market Explanation
+### GET /api/v1/markets/{market_id}/explain
 
-```http
-GET /api/v1/markets/{market_id}/explain
-```
+Returns screener score/explanation for a market id.
 
-Get AI-generated explanation for market dislocation.
+Error response:
 
-**Response**:
-```json
-{
-  "market_id": "kalshi-recession-2026",
-  "explanation": "Based on FRED indicators...",
-  "factors": [
-    {"source": "fred", "indicator": "UNRATE", "impact": "bearish"},
-    {"source": "fred", "indicator": "T10Y2Y", "impact": "neutral"}
-  ],
-  "confidence": 4
-}
-```
-
----
+- 404 with detail: Market score not found: {market_id}
 
 ## WebSocket Endpoints
 
-### Research WebSocket
+### WS /api/v1/ws/research
 
-```
-ws://localhost:8000/api/v1/ws/research
-```
+Client message types:
 
-Real-time bidirectional communication for GLM-5.1 agent streaming.
+- ping
+- status
+- query
 
-**Client Message Format**:
+Client query message:
+
 ```json
 {
   "type": "query",
@@ -254,167 +219,53 @@ Real-time bidirectional communication for GLM-5.1 agent streaming.
 }
 ```
 
-**Supported Client Types**:
-- `ping`: Health check
-- `query`: Start research query
-- `status`: Get current status
+Server message types used by this endpoint:
 
-**Server Message Types**:
-- `connected`: Connection established
-- `trace`: Trace step data
-- `reflection_checkpoint`: Self-reflection event
-- `complete`: Research complete
-- `error`: Error occurred
+- connected
+- pong
+- status
+- query_started
+- trace
+- reflection_checkpoint
+- complete
+- error
 
-**Example Flow**:
-```
-Client → {"type": "query", "question": "..."}
-Server → {"type": "connected", "timestamp": "..."}
-Server → {"type": "trace", "data": {...}}
-Server → {"type": "reflection_checkpoint", "step": 5}
-Server → {"type": "complete", "total_steps": 12}
-```
+Notes:
 
----
+- trace events wrap TraceStep payload as data
+- query starts background streaming task per request
 
-### Broadcast WebSocket
+### WS /api/v1/ws/broadcast
 
-```
-ws://localhost:8000/api/v1/ws/broadcast
-```
+Server emits:
 
-Multi-client broadcast channel for updates and collaboration.
+- connected with connection_id and active_connections
 
-**Features**:
-- Real-time market data updates
-- System announcements
-- Collaborative research sharing
+Client may send:
 
----
+- ping
 
-## Schemas
+Server replies:
 
-### ResearchBrief
+- pong with connection count
 
-```typescript
-{
-  question: string
-  thesis: string
-  bull_case: Array<{point: string, source_ref: string}>
-  bear_case: Array<{point: string, source_ref: string}>
-  key_risks: Array<{risk: string, source_ref: string}>
-  confidence: number  // 1-5
-  confidence_rationale: string
-  methodology_summary?: string
-  sources: Array<{
-    type: "fred" | "edgar" | "news" | "market"
-    id: string
-    excerpt: string
-  }>
-  created_at: string
-  trace_steps: number[]
-}
-```
+## Error and Validation Semantics
 
-### TraceStep
+Common status codes:
 
-```typescript
-{
-  step_index: number
-  type: "tool_call" | "tool_result" | "reasoning" | "reflection" | "brief_delta" | "complete" | "error"
-  tool_name?: string
-  tool_args?: object
-  content?: string | object
-  timestamp: string
-}
-```
+- 200: success
+- 404: unknown market/score id (market detail and explain)
+- 422: request validation error (for example, short question or invalid query params)
 
----
+There is currently no explicit API-level 401/429 route behavior implemented.
 
-## Error Codes
+## Limits and Determinism Notes
 
-| Code | Description |
-|------|-------------|
-| 400 | Bad Request - Invalid parameters |
-| 401 | Unauthorized - Invalid API key |
-| 429 | Rate Limited - Too many requests |
-| 500 | Internal Server Error |
-| 503 | Service Unavailable - GLM-5.1 API down |
+- research stream timeout: 120 seconds
+- demo mode is fixture-backed and deterministic
+- Playwright path runs with PLAYWRIGHT=true and MERIDIAN_MODE=demo
 
----
+## Deployment Notes
 
-## Rate Limits
-
-- Demo mode: No rate limiting
-- Live mode: 100 requests/minute per IP
-
----
-
-## SDK Examples
-
-### Python
-
-```python
-import httpx
-
-async def query_research(question: str):
-    async with httpx.AsyncClient() as client:
-        async with client.stream(
-            "POST",
-            "http://localhost:8000/api/v1/research",
-            json={"question": question},
-            timeout=120.0
-        ) as response:
-            async for line in response.aiter_lines():
-                if line.startswith("data: "):
-                    data = json.loads(line[6:])
-                    print(f"Step: {data['type']}")
-```
-
-### JavaScript
-
-```javascript
-async function queryResearch(question) {
-  const response = await fetch('/api/v1/research', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({question})
-  });
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const {done, value} = await reader.read();
-    if (done) break;
-    const text = decoder.decode(value);
-    // Parse SSE events...
-  }
-}
-```
-
-### WebSocket (JavaScript)
-
-```javascript
-const ws = new WebSocket('ws://localhost:8000/api/v1/ws/research');
-
-ws.onopen = () => {
-  ws.send(JSON.stringify({
-    type: 'query',
-    question: 'What is the recession probability?'
-  }));
-};
-
-ws.onmessage = (event) => {
-  const message = JSON.parse(event.data);
-  console.log('Received:', message.type, message.data);
-};
-```
-
----
-
-## OpenAPI Specification
-
-Interactive API documentation available at:
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- Frontend can proxy API requests under /api/v1/* via Next.js rewrites
+- Vercel config is present in vercel.json and points API traffic to meridian-api.railway.app

@@ -7,6 +7,7 @@
   "scripts": {
     "tsc": "tsc -p apps/web/tsconfig.json --noEmit",
     "vitest": "vitest run --config vitest.config.ts",
+    "test:unit": "npm run vitest",
     "playwright": "PLAYWRIGHT=true playwright test",
     "dev": "concurrently \"uvicorn apps.api.main:app --reload --port 8000\" \"npm run -w @meridian/web dev\"",
     "harness": "python scripts/test_harness.py"

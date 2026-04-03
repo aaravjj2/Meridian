@@ -130,14 +130,29 @@ Open **http://localhost:3000** and try a research query like:
 For live GLM-5.1 inference:
 
 ```bash
-# Set your Z.ai API key
-export ZAI_API_KEY="your-api-key-here"
-
 # Run in live mode
-npm run dev
+MERIDIAN_MODE=live ZAI_API_KEY="your-api-key-here" npm run dev
 ```
 
 Get your API key from: [Z.ai Platform](https://platform.z.ai/)
+
+---
+
+## 🌐 Deployment Story
+
+Meridian's current deployment configuration is explicit and demo-safe:
+
+- Frontend deployment config lives in `vercel.json`.
+- Frontend proxies `/api/v1/*` to `MERIDIAN_API_BASE_URL`.
+- Current configured API target is `https://meridian-api.railway.app`.
+- Public health reachability is not assumed; in this audit a direct probe to `/api/v1/health` returned HTTP 404.
+- Demo mode remains the default path for deterministic runs without secrets.
+
+Health verification command for a deployed backend:
+
+```bash
+curl -s https://meridian-api.railway.app/api/v1/health
+```
 
 ---
 
@@ -151,49 +166,55 @@ Get your API key from: [Z.ai Platform](https://platform.z.ai/)
 | `/api/v1/screener` | GET | Ranked market dislocations |
 | `/api/v1/regime` | GET | 5-dimension macro regime snapshot |
 | `/api/v1/markets` | GET | Paginated market listings |
-| `/api/v1/markets/{id}` | GET | Market details with history |
-| `/api/v1/markets/{id}/explain` | GET | AI-generated dislocation explanation |
+| `/api/v1/markets/{market_id}` | GET | Market details with history |
+| `/api/v1/markets/{market_id}/explain` | GET | Dislocation explanation payload |
+| `/api/v1/ws/research` | WS | Bidirectional query + trace stream |
+| `/api/v1/ws/broadcast` | WS | Multi-client broadcast channel |
 
 ---
 
-## ✅ Test Coverage
+## ✅ Validation Gates
 
-Meridian uses **4-layer validation** to ensure code quality:
+Meridian uses four required validation layers:
 
 ```bash
 # Layer 1: TypeScript type checking
 npm run tsc
 
-# Layer 2: Frontend unit tests (Vitest + happy-dom)
-npm run test:unit
+# Layer 2: Frontend unit tests
+npm run vitest
 
 # Layer 3: Backend unit tests (pytest)
-python -m pytest -q
+pytest -q
 
 # Layer 4: E2E tests (Playwright)
-npx playwright test
+npm run playwright
 ```
 
-**Current Status (MVP Foundation - Phase 1 Complete):**
-- ✅ TypeScript: No type errors
-- ✅ Frontend Unit: 35/35 tests passing (QueryInput, ScreenerTable, RegimeDashboard)
-- ✅ Backend Unit: 44/44 tests passing (agent, api, features, ingestion, screener)
-- ✅ E2E: 5/5 tests passing (smoke, regime, screener, research flow, methodology)
+Compatibility alias:
+
+```bash
+npm run test:unit
+```
+
+Count convention used in proof and reporting: **test cases**.
+
+For exact latest gate counts and outcomes, use the newest manifest under:
+
+- `artifacts/proof/<timestamp>-<slug>/MANIFEST.md`
 
 **Demo Mode Validation:**
 ```bash
 # Validate demo mode fixtures and configuration
 python scripts/validate_demo.py
 ```
-- ✅ All 6 validation checks passed (fixtures, trace, data sources, API health)
 
 ### Troubleshooting Tests
 
 If tests fail:
 - **TypeScript errors**: Ensure `node_modules` is installed and run `npm install`
-- **Frontend test timeouts**: Increase `testTimeout` in `vitest.config.ts`
 - **Backend test failures**: Check Python environment has all dependencies: `pip install -e .[dev]`
-- **E2E test failures**: Ensure dev server is running on port 3000: `npm run dev`
+- **E2E test failures**: Run `npm run playwright` directly (Playwright starts API + web servers via config)
 
 ---
 

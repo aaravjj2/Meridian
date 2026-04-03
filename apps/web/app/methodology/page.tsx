@@ -5,7 +5,7 @@ export default function MethodologyPage() {
     <main className="methodology-page" data-testid="methodology-page">
       <RegimeDashboard />
       <article className="methodology-article">
-        <h1>How Meridian Works</h1>
+        <h1 data-testid="methodology-heading-how">How Meridian Works</h1>
 
         <section>
           <h2>What Meridian Does</h2>
@@ -24,7 +24,7 @@ export default function MethodologyPage() {
         </section>
 
         <section>
-          <h2>Data Sources</h2>
+          <h2 data-testid="methodology-heading-data-sources">Data Sources</h2>
           <table>
             <thead>
               <tr>
