@@ -103,8 +103,10 @@ Brief payload additions in complete events:
 - query_class: macro_outlook | event_probability | ticker_macro
 - follow_up_context: optional string summarizing prior-question linkage
 - methodology_summary: optional string explaining evidence synthesis process
-- sources[].claim_refs: array of claim pointers (for example bull_case[0])
+- bull_case[].claim_id, bear_case[].claim_id, key_risks[].claim_id: stable claim identifiers
+- sources[].claim_refs: array of claim_id links for claim-to-source navigation
 - sources[].preview: structured preview metadata keyed by source type
+- signal_conflicts[]: contradiction metadata with conflict_id, title, summary, severity, claim_refs, source_refs
 
 Semantics:
 

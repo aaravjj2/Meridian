@@ -49,6 +49,7 @@ def _brief_signature(brief_payload: dict) -> str:
             }
             for source in brief_payload.get("sources", [])
         ],
+        "signal_conflicts": brief_payload.get("signal_conflicts", []),
     }
     digest = hashlib.sha256(json.dumps(canonical, sort_keys=True).encode("utf-8"))
     return digest.hexdigest()
@@ -102,6 +103,38 @@ def test_research_followup_uses_session_context() -> None:
     assert brief.query_class == "event_probability"
     assert brief.follow_up_context is not None
     assert "follow-up to prior question" in brief.follow_up_context.lower()
+
+
+def test_research_brief_emits_claim_navigation_and_conflicts() -> None:
+    events = _collect_events(
+        question="What does the current yield curve shape imply for equities over the next 6 months?",
+        session_id="phase3-claim-nav-session",
+    )
+
+    complete = events[-1]
+    assert complete["type"] == "complete"
+
+    brief = ResearchBrief.model_validate(complete["brief"])
+    claim_ids = [
+        *[item.claim_id for item in brief.bull_case],
+        *[item.claim_id for item in brief.bear_case],
+        *[item.claim_id for item in brief.key_risks],
+    ]
+    assert len(claim_ids) == len(set(claim_ids))
+
+    referenced_claims = {
+        claim_ref
+        for source in brief.sources
+        for claim_ref in source.claim_refs
+    }
+    assert set(claim_ids).issubset(referenced_claims)
+
+    assert len(brief.signal_conflicts) >= 1
+    known_sources = {f"{source.type}:{source.id}" for source in brief.sources}
+    for conflict in brief.signal_conflicts:
+        assert len(conflict.claim_refs) >= 2
+        assert set(conflict.claim_refs).issubset(set(claim_ids))
+        assert set(conflict.source_refs).issubset(known_sources)
 
 
 def test_research_demo_output_is_deterministic_for_same_question() -> None:

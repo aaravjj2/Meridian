@@ -195,22 +195,77 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
                     ),
                     thesis="Research stream terminated with an error state.",
                     bull_case=[
-                        {"point": "Data retrieval completed for at least one source.", "source_ref": "system:error"},
-                        {"point": "Termination safeguards emitted completion event.", "source_ref": "system:error"},
-                        {"point": "Client can safely reset state.", "source_ref": "system:error"},
+                        {
+                            "claim_id": "bull-1-fallback-contract-preserved",
+                            "point": "Data retrieval completed for at least one source.",
+                            "source_ref": "system:error",
+                        },
+                        {
+                            "claim_id": "bull-2-fallback-complete-emitted",
+                            "point": "Termination safeguards emitted completion event.",
+                            "source_ref": "system:error",
+                        },
+                        {
+                            "claim_id": "bull-3-fallback-client-recoverable",
+                            "point": "Client can safely reset state.",
+                            "source_ref": "system:error",
+                        },
                     ],
                     bear_case=[
-                        {"point": "Agent did not produce a full evidence-backed brief.", "source_ref": "system:error"},
-                        {"point": "Manual retry is required for complete analysis.", "source_ref": "system:error"},
+                        {
+                            "claim_id": "bear-1-fallback-brief-incomplete",
+                            "point": "Agent did not produce a full evidence-backed brief.",
+                            "source_ref": "system:error",
+                        },
+                        {
+                            "claim_id": "bear-2-fallback-retry-required",
+                            "point": "Manual retry is required for complete analysis.",
+                            "source_ref": "system:error",
+                        },
                     ],
                     key_risks=[
-                        {"risk": "Execution path timed out or raised an exception.", "source_ref": "system:error"},
-                        {"risk": "Downstream UI must display degraded completion.", "source_ref": "system:error"},
+                        {
+                            "claim_id": "risk-1-fallback-runtime-failure",
+                            "risk": "Execution path timed out or raised an exception.",
+                            "source_ref": "system:error",
+                        },
+                        {
+                            "claim_id": "risk-2-fallback-degraded-ux",
+                            "risk": "Downstream UI must display degraded completion.",
+                            "source_ref": "system:error",
+                        },
                     ],
                     confidence=1,
                     confidence_rationale="Fallback completion after runtime error.",
                     sources=[
-                        {"type": "news", "id": "system:error", "excerpt": "Fallback completion to satisfy SSE contract."}
+                        {
+                            "type": "news",
+                            "id": "system:error",
+                            "excerpt": "Fallback completion to satisfy SSE contract.",
+                            "claim_refs": [
+                                "bull-1-fallback-contract-preserved",
+                                "bull-2-fallback-complete-emitted",
+                                "bull-3-fallback-client-recoverable",
+                                "bear-1-fallback-brief-incomplete",
+                                "bear-2-fallback-retry-required",
+                                "risk-1-fallback-runtime-failure",
+                                "risk-2-fallback-degraded-ux",
+                            ],
+                        }
+                    ],
+                    signal_conflicts=[
+                        {
+                            "conflict_id": "conflict-fallback-partial-success",
+                            "title": "Contract Safety Versus Analysis Completeness",
+                            "summary": "The stream remains structurally safe for clients, but the analytical content is incomplete and should be retried.",
+                            "severity": "high",
+                            "claim_refs": [
+                                "bull-2-fallback-complete-emitted",
+                                "bear-1-fallback-brief-incomplete",
+                                "risk-1-fallback-runtime-failure",
+                            ],
+                            "source_refs": ["news:system:error"],
+                        }
                     ],
                     created_at=_iso_now(),
                     trace_steps=[],

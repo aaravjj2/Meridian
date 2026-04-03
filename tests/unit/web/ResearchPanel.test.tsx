@@ -9,17 +9,21 @@ const brief = {
   follow_up_context: 'Follow-up to prior question: How should I think about recession odds?',
   thesis: 'Macro thesis text',
   bull_case: [
-    { point: 'Bull one', source_ref: 'fred_fetch:T10Y2Y' },
-    { point: 'Bull two', source_ref: 'fred_fetch:CPIAUCSL' },
-    { point: 'Bull three', source_ref: 'prediction_market_fetch:KXFEDCUT-H1-2026' },
+    { claim_id: 'bull-1-inversion-easing', point: 'Bull one', source_ref: 'fred_fetch:T10Y2Y' },
+    { claim_id: 'bull-2-disinflation-progress', point: 'Bull two', source_ref: 'fred_fetch:CPIAUCSL' },
+    {
+      claim_id: 'bull-3-easing-pricing-support',
+      point: 'Bull three',
+      source_ref: 'prediction_market_fetch:KXFEDCUT-H1-2026',
+    },
   ],
   bear_case: [
-    { point: 'Bear one', source_ref: 'fred_fetch:T10Y2Y' },
-    { point: 'Bear two', source_ref: 'fred_fetch:BAMLH0A0HYM2' },
+    { claim_id: 'bear-1-inversion-still-warning', point: 'Bear one', source_ref: 'fred_fetch:T10Y2Y' },
+    { claim_id: 'bear-2-credit-stress-elevated', point: 'Bear two', source_ref: 'fred_fetch:BAMLH0A0HYM2' },
   ],
   key_risks: [
-    { risk: 'Risk one', source_ref: 'news_fetch:fed-rate-decision' },
-    { risk: 'Risk two', source_ref: 'fred_fetch:CPIAUCSL' },
+    { claim_id: 'risk-1-policy-repricing', risk: 'Risk one', source_ref: 'news_fetch:fed-rate-decision' },
+    { claim_id: 'risk-2-inflation-surprise', risk: 'Risk two', source_ref: 'fred_fetch:CPIAUCSL' },
   ],
   confidence: 3,
   confidence_rationale: 'mixed',
@@ -29,7 +33,7 @@ const brief = {
       type: 'fred',
       id: 'T10Y2Y',
       excerpt: 'x',
-      claim_refs: ['bull_case[0]', 'bear_case[0]'],
+      claim_refs: ['bull-1-inversion-easing', 'bear-1-inversion-still-warning'],
       preview: {
         kind: 'fred_series',
         latest: -0.21,
@@ -40,13 +44,28 @@ const brief = {
         ],
       },
     },
-    { type: 'fred', id: 'CPIAUCSL', excerpt: 'y', claim_refs: ['bull_case[1]'] },
+    {
+      type: 'fred',
+      id: 'CPIAUCSL',
+      excerpt: 'y',
+      claim_refs: ['bull-2-disinflation-progress', 'risk-2-inflation-surprise'],
+    },
     {
       type: 'market',
       id: 'KXFEDCUT-H1-2026',
       excerpt: 'z',
-      claim_refs: ['bull_case[2]'],
+      claim_refs: ['bull-3-easing-pricing-support'],
       preview: { kind: 'market_contract', market_prob: 0.64, dislocation: 0.19 },
+    },
+  ],
+  signal_conflicts: [
+    {
+      conflict_id: 'conflict-curve-interpretation',
+      title: 'Curve interpretation split',
+      summary: 'The same curve data can be interpreted as improving but still cautionary.',
+      severity: 'medium',
+      claim_refs: ['bull-1-inversion-easing', 'bear-1-inversion-still-warning'],
+      source_refs: ['fred:T10Y2Y'],
     },
   ],
   created_at: '2026-04-02T00:00:00Z',
@@ -54,7 +73,7 @@ const brief = {
 } satisfies NonNullable<React.ComponentProps<typeof ResearchPanel>['brief']>
 
 describe('ResearchPanel', () => {
-  it('renders complete brief sections, follow-up context, and source previews', () => {
+  it('renders complete brief sections, supports claim navigation, and shows conflict context', () => {
     render(<ResearchPanel status="complete" brief={brief} errorMessage="" />)
 
     expect(screen.getByTestId('brief-complete')).toBeInTheDocument()
@@ -66,10 +85,16 @@ describe('ResearchPanel', () => {
     expect(screen.getByTestId('confidence-meter')).toHaveTextContent('3 / 5')
     expect(screen.getByTestId('confidence-rationale')).toHaveTextContent('mixed')
     expect(screen.getByTestId('methodology-summary')).toHaveTextContent('Cross-source synthesis')
+    expect(screen.getByTestId('signal-conflicts')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByTestId('source-item-0'))
+    fireEvent.click(screen.getByTestId('claim-link-bull-1-inversion-easing'))
+    expect(screen.getByTestId('evidence-drilldown')).toBeInTheDocument()
+    expect(screen.getByTestId('active-claim-id')).toHaveTextContent('bull-1-inversion-easing')
     expect(screen.getByTestId('source-preview-0')).toBeInTheDocument()
-    expect(screen.getByTestId('source-claims-0')).toHaveTextContent('bull_case[0]')
+    expect(screen.getByTestId('source-claims-0')).toHaveTextContent('bull-1-inversion-easing')
+
+    fireEvent.click(screen.getByTestId('signal-conflict-claim-0-1'))
+    expect(screen.getByTestId('active-claim-id')).toHaveTextContent('bear-1-inversion-still-warning')
   })
 
   it.each([

@@ -106,17 +106,45 @@ function fallbackBrief(question: string, priorQuestion: string | null): Research
           ? 'Fallback ticker-plus-macro framing favors quality exposure with explicit risk controls tied to credit and growth signals.'
           : 'Fallback macro outlook indicates a late-cycle mix: easing inflation trend versus persistent inversion and credit caution.',
     bull_case: [
-      { point: 'Disinflation progress supports policy flexibility in baseline scenarios.', source_ref: 'fred_fetch:CPIAUCSL' },
-      { point: 'Event-pricing data indicates easing expectations remain active.', source_ref: 'prediction_market_fetch:KXFEDCUT-H1-2026' },
-      { point: 'Risk assets can remain supported if growth deceleration stays orderly.', source_ref: 'fred_fetch:GDPC1' },
+      {
+        claim_id: 'bull-1-disinflation-progress',
+        point: 'Disinflation progress supports policy flexibility in baseline scenarios.',
+        source_ref: 'fred_fetch:CPIAUCSL',
+      },
+      {
+        claim_id: 'bull-2-event-pricing-supports-easing',
+        point: 'Event-pricing data indicates easing expectations remain active.',
+        source_ref: 'prediction_market_fetch:KXFEDCUT-H1-2026',
+      },
+      {
+        claim_id: 'bull-3-growth-absorption-capacity',
+        point: 'Risk assets can remain supported if growth deceleration stays orderly.',
+        source_ref: 'fred_fetch:GDPC1',
+      },
     ],
     bear_case: [
-      { point: 'Curve inversion still signals lagged downside growth risk.', source_ref: 'fred_fetch:T10Y2Y' },
-      { point: 'Credit spreads remain above low-stress ranges.', source_ref: 'fred_fetch:BAMLH0A0HYM2' },
+      {
+        claim_id: 'bear-1-curve-inversion-warning',
+        point: 'Curve inversion still signals lagged downside growth risk.',
+        source_ref: 'fred_fetch:T10Y2Y',
+      },
+      {
+        claim_id: 'bear-2-credit-spread-caution',
+        point: 'Credit spreads remain above low-stress ranges.',
+        source_ref: 'fred_fetch:BAMLH0A0HYM2',
+      },
     ],
     key_risks: [
-      { risk: 'Inflation re-acceleration can delay easing and tighten conditions.', source_ref: 'fred_fetch:CPIAUCSL' },
-      { risk: 'Policy communication shocks can reprice event probabilities rapidly.', source_ref: 'news_fetch:fed-rate-decision' },
+      {
+        claim_id: 'risk-1-inflation-reacceleration',
+        risk: 'Inflation re-acceleration can delay easing and tighten conditions.',
+        source_ref: 'fred_fetch:CPIAUCSL',
+      },
+      {
+        claim_id: 'risk-2-policy-communication-shock',
+        risk: 'Policy communication shocks can reprice event probabilities rapidly.',
+        source_ref: 'news_fetch:fed-rate-decision',
+      },
     ],
     confidence: 3,
     confidence_rationale: 'Fallback mode provides deterministic but reduced-depth synthesis.',
@@ -126,7 +154,7 @@ function fallbackBrief(question: string, priorQuestion: string | null): Research
         type: 'fred',
         id: 'T10Y2Y',
         excerpt: 'Curve inversion has moderated from recent lows.',
-        claim_refs: ['bear_case[0]'],
+        claim_refs: ['bear-1-curve-inversion-warning'],
         preview: {
           kind: 'fred_series',
           series_id: 'T10Y2Y',
@@ -144,7 +172,7 @@ function fallbackBrief(question: string, priorQuestion: string | null): Research
         type: 'fred',
         id: 'CPIAUCSL',
         excerpt: 'Inflation index remains elevated but trend has eased.',
-        claim_refs: ['bull_case[0]', 'key_risks[0]'],
+        claim_refs: ['bull-1-disinflation-progress', 'risk-1-inflation-reacceleration'],
         preview: {
           kind: 'fred_series',
           series_id: 'CPIAUCSL',
@@ -161,7 +189,7 @@ function fallbackBrief(question: string, priorQuestion: string | null): Research
         type: 'market',
         id: 'KXFEDCUT-H1-2026',
         excerpt: 'Kalshi cut-probability remains elevated in mid-2026 contracts.',
-        claim_refs: ['bull_case[1]'],
+        claim_refs: ['bull-2-event-pricing-supports-easing'],
         preview: {
           kind: 'market_contract',
           platform: 'kalshi',
@@ -171,15 +199,69 @@ function fallbackBrief(question: string, priorQuestion: string | null): Research
         },
       },
       {
+        type: 'fred',
+        id: 'GDPC1',
+        excerpt: 'Real GDP has remained positive, supporting orderly slowdown scenarios.',
+        claim_refs: ['bull-3-growth-absorption-capacity'],
+        preview: {
+          kind: 'fred_series',
+          series_id: 'GDPC1',
+          latest: 23201.58,
+          delta_lookback: 148.24,
+          points: [
+            { date: '2025-07-01', value: 22995.11 },
+            { date: '2025-10-01', value: 23053.34 },
+            { date: '2026-01-01', value: 23124.17 },
+            { date: '2026-04-01', value: 23201.58 },
+          ],
+        },
+      },
+      {
+        type: 'fred',
+        id: 'BAMLH0A0HYM2',
+        excerpt: 'High-yield spreads remain above benign-cycle lows.',
+        claim_refs: ['bear-2-credit-spread-caution'],
+        preview: {
+          kind: 'fred_series',
+          series_id: 'BAMLH0A0HYM2',
+          latest: 3.72,
+          delta_lookback: -0.18,
+          points: [
+            { date: '2025-11-01', value: 3.9 },
+            { date: '2025-12-01', value: 3.85 },
+            { date: '2026-01-01', value: 3.79 },
+            { date: '2026-02-01', value: 3.72 },
+          ],
+        },
+      },
+      {
         type: 'news',
         id: 'fed-rate-decision',
         excerpt: 'Recent coverage highlights data-dependent easing with recession hedging.',
-        claim_refs: ['key_risks[1]'],
+        claim_refs: ['risk-2-policy-communication-shock'],
         preview: {
           kind: 'news_digest',
           topic: 'fed-rate-decision',
           headlines: ['Fed signals data-dependent easing path', 'Bond market prices faster cuts after dovish remarks'],
         },
+      },
+    ],
+    signal_conflicts: [
+      {
+        conflict_id: 'conflict-curve-improving-vs-risky',
+        title: 'Curve Improvement Versus Residual Inversion Risk',
+        summary: 'The inversion has improved from extremes while still signaling caution for lagged growth outcomes.',
+        severity: 'medium',
+        claim_refs: ['bull-3-growth-absorption-capacity', 'bear-1-curve-inversion-warning'],
+        source_refs: ['fred:T10Y2Y', 'fred:GDPC1'],
+      },
+      {
+        conflict_id: 'conflict-disinflation-vs-tail-risk',
+        title: 'Disinflation Baseline Versus Inflation Tail Risk',
+        summary: 'Cooling inflation supports easing assumptions, yet tail risk remains non-trivial in policy-sensitive windows.',
+        severity: 'high',
+        claim_refs: ['bull-1-disinflation-progress', 'risk-1-inflation-reacceleration'],
+        source_refs: ['fred:CPIAUCSL'],
       },
     ],
     created_at: '2026-04-02T00:00:09Z',

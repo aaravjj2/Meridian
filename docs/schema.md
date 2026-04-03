@@ -17,14 +17,22 @@
 
 - `question: str`
 - `thesis: str`
-- `bull_case: list[{ point, source_ref }]` (3-5)
-- `bear_case: list[{ point, source_ref }]` (2-5)
-- `key_risks: list[{ risk, source_ref }]` (>=2)
+- `bull_case: list[{ claim_id, point, source_ref }]` (3-5)
+- `bear_case: list[{ claim_id, point, source_ref }]` (2-5)
+- `key_risks: list[{ claim_id, risk, source_ref }]` (>=2)
 - `confidence: int [1, 5]`
 - `confidence_rationale: str`
-- `sources: list[{ type, id, excerpt }]`
+- `sources: list[{ type, id, excerpt, claim_refs?, preview? }]`
+- `signal_conflicts: list[{ conflict_id, title, summary, severity, claim_refs, source_refs }]`
 - `created_at: str (ISO)`
 - `trace_steps: list[int]`
+
+Validation notes:
+
+- `claim_id` values are unique across bull/bear/risk sections.
+- Every claim must be linked from at least one `sources[].claim_refs` entry.
+- `signal_conflicts[].claim_refs` must reference valid `claim_id` values.
+- `signal_conflicts[].source_refs` uses `type:id` format (example: `fred:T10Y2Y`).
 
 ## TraceStep
 

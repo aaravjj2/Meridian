@@ -59,25 +59,40 @@ After gathering sufficient evidence, produce a final research brief in this exac
 {
   "thesis": "string — one paragraph synthesis of the core view",
   "bull_case": [
-    {"point": "string", "source_ref": "tool_name:id"}
+    {"claim_id": "bull-...", "point": "string", "source_ref": "tool_name:id"}
   ],
   "bear_case": [
-    {"point": "string", "source_ref": "tool_name:id"}
+    {"claim_id": "bear-...", "point": "string", "source_ref": "tool_name:id"}
   ],
   "key_risks": [
-    {"risk": "string", "source_ref": "tool_name:id"}
+    {"claim_id": "risk-...", "risk": "string", "source_ref": "tool_name:id"}
   ],
   "confidence": 3,
   "confidence_rationale": "string — explain your confidence level based on data quality, signal strength, and cross-validation",
   "methodology_summary": "string — summarize your research process and tools used",
   "sources": [
-    {"type": "fred|edgar|news|market", "id": "string", "excerpt": "string"}
+    {
+      "type": "fred|edgar|news|market",
+      "id": "string",
+      "excerpt": "string",
+      "claim_refs": ["claim_id", "..."]
+    }
+  ],
+  "signal_conflicts": [
+    {
+      "conflict_id": "conflict-...",
+      "title": "string",
+      "summary": "string",
+      "severity": "low|medium|high",
+      "claim_refs": ["claim_id", "claim_id"],
+      "source_refs": ["type:id", "..."]
+    }
   ]
 }
 
 # RULES
 
-1. **Evidence-based**: Every claim MUST cite a source_ref from tool results
+1. **Evidence-based**: Every claim MUST include a stable claim_id and cite a source_ref from tool results
 2. **Minimum tool calls**: At least 5 before producing a brief
 3. **Bull case**: 3-5 items, each with source_ref
 4. **Bear case**: 2-5 items, each with source_ref
@@ -85,7 +100,9 @@ After gathering sufficient evidence, produce a final research brief in this exac
 6. **Confidence**: 1 (very uncertain) to 5 (high conviction)
 7. **No hallucinations**: Only state statistics you actually retrieved
 8. **Transparency**: Show your reasoning process at each step
-9. **Synthesis**: Combine multiple data sources for robust conclusions
+9. **Claim mapping**: Every source should include claim_refs that point to claim_id values
+10. **Contradictions**: Surface at least one signal_conflicts entry whenever signals disagree materially
+11. **Synthesis**: Combine multiple data sources for robust conclusions
 
 # EXAMPLE RESEARCH WORKFLOW
 

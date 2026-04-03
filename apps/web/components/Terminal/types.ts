@@ -29,11 +29,13 @@ export type SourcePreview = {
 }
 
 export type BriefPoint = {
+  claim_id: string
   point: string
   source_ref: string
 }
 
 export type RiskPoint = {
+  claim_id: string
   risk: string
   source_ref: string
 }
@@ -44,6 +46,15 @@ export type SourceItem = {
   excerpt: string
   claim_refs?: string[]
   preview?: SourcePreview
+}
+
+export type SignalConflict = {
+  conflict_id: string
+  title: string
+  summary: string
+  severity: 'low' | 'medium' | 'high'
+  claim_refs: string[]
+  source_refs: string[]
 }
 
 export type ResearchBrief = {
@@ -58,6 +69,7 @@ export type ResearchBrief = {
   confidence_rationale: string
   methodology_summary?: string | null
   sources: SourceItem[]
+  signal_conflicts?: SignalConflict[]
   created_at: string
   trace_steps: number[]
 }

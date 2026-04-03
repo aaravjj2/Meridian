@@ -303,8 +303,13 @@ confidence: 1-5
 confidence_rationale: str
 methodology_summary?: str
 sources: SourceRef[]
+signal_conflicts: SignalConflict[]
 created_at: str
 trace_steps: int[]
+
+# BriefPoint / RiskPoint include stable `claim_id` values.
+# SourceRef.claim_refs links sources back to claim_id values.
+# SignalConflict captures contradictory evidence with claim_refs and source_refs.
 ```
 
 ---

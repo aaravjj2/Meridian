@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -9,6 +10,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class DataPoint(BaseModel):
     date: str
     value: float
+
+
+def _slugify_token(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
 class CanonicalMarket(BaseModel):
@@ -24,28 +29,34 @@ class CanonicalMarket(BaseModel):
     history: list[DataPoint] = Field(default_factory=list)
 
 
-class BriefPoint(BaseModel):
+class ClaimBase(BaseModel):
+    claim_id: str
+    source_ref: str
+
+    @field_validator("claim_id")
+    @classmethod
+    def ensure_claim_id(cls, value: str) -> str:
+        claim_id = value.strip()
+        if not claim_id:
+            raise ValueError("claim_id must be non-empty")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{2,63}", claim_id):
+            raise ValueError("claim_id must use lowercase letters, numbers, '_' or '-'")
+        return claim_id
+
+    @field_validator("source_ref")
+    @classmethod
+    def ensure_source_ref(cls, value: str) -> str:
+        if ":" not in value:
+            raise ValueError("source_ref must follow tool_name:id format")
+        return value
+
+
+class BriefPoint(ClaimBase):
     point: str
-    source_ref: str
-
-    @field_validator("source_ref")
-    @classmethod
-    def ensure_source_ref(cls, value: str) -> str:
-        if ":" not in value:
-            raise ValueError("source_ref must follow tool_name:id format")
-        return value
 
 
-class RiskPoint(BaseModel):
+class RiskPoint(ClaimBase):
     risk: str
-    source_ref: str
-
-    @field_validator("source_ref")
-    @classmethod
-    def ensure_source_ref(cls, value: str) -> str:
-        if ":" not in value:
-            raise ValueError("source_ref must follow tool_name:id format")
-        return value
 
 
 class SourceRef(BaseModel):
@@ -54,6 +65,23 @@ class SourceRef(BaseModel):
     excerpt: str
     claim_refs: list[str] = Field(default_factory=list)
     preview: dict[str, Any] | None = None
+
+
+class SignalConflict(BaseModel):
+    conflict_id: str
+    title: str
+    summary: str
+    severity: Literal["low", "medium", "high"] = "medium"
+    claim_refs: list[str] = Field(default_factory=list)
+    source_refs: list[str] = Field(default_factory=list)
+
+    @field_validator("conflict_id")
+    @classmethod
+    def ensure_conflict_id(cls, value: str) -> str:
+        conflict_id = value.strip()
+        if not conflict_id:
+            raise ValueError("conflict_id must be non-empty")
+        return conflict_id
 
 
 class ResearchBrief(BaseModel):
@@ -68,8 +96,92 @@ class ResearchBrief(BaseModel):
     confidence_rationale: str
     methodology_summary: str | None = None
     sources: list[SourceRef]
+    signal_conflicts: list[SignalConflict] = Field(default_factory=list)
     created_at: str
     trace_steps: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_claim_references(cls, payload: Any) -> Any:
+        if not isinstance(payload, dict):
+            return payload
+
+        section_map = (("bull_case", "bull"), ("bear_case", "bear"), ("key_risks", "risk"))
+        legacy_to_claim: dict[str, str] = {}
+        source_to_claims: dict[str, list[str]] = {}
+
+        for section_name, prefix in section_map:
+            items = payload.get(section_name, [])
+            if not isinstance(items, list):
+                continue
+
+            for idx, item in enumerate(items):
+                if not isinstance(item, dict):
+                    continue
+
+                source_ref = str(item.get("source_ref", "")).strip()
+                source_token = ""
+                if ":" in source_ref:
+                    source_token = source_ref.split(":", 1)[1]
+
+                existing_claim_id = str(item.get("claim_id", "")).strip()
+                if existing_claim_id:
+                    claim_id = existing_claim_id
+                else:
+                    suffix = _slugify_token(source_token)[:24] if source_token else ""
+                    if not suffix:
+                        suffix = f"{idx + 1:02d}"
+                    claim_id = f"{prefix}-{idx + 1}-{suffix}"
+                    item["claim_id"] = claim_id
+
+                legacy_to_claim[f"{section_name}[{idx}]"] = claim_id
+
+                if source_token:
+                    source_to_claims.setdefault(source_token, [])
+                    if claim_id not in source_to_claims[source_token]:
+                        source_to_claims[source_token].append(claim_id)
+
+        sources = payload.get("sources", [])
+        if isinstance(sources, list):
+            for source in sources:
+                if not isinstance(source, dict):
+                    continue
+
+                refs = source.get("claim_refs", [])
+                normalized_refs: list[str] = []
+                if isinstance(refs, list):
+                    for ref in refs:
+                        ref_text = str(ref).strip()
+                        if not ref_text:
+                            continue
+                        normalized_refs.append(legacy_to_claim.get(ref_text, ref_text))
+
+                source_id = str(source.get("id", "")).strip()
+                if not normalized_refs and source_id in source_to_claims:
+                    normalized_refs = list(source_to_claims[source_id])
+
+                deduped_refs: list[str] = []
+                seen_refs: set[str] = set()
+                for claim_ref in normalized_refs:
+                    if claim_ref in seen_refs:
+                        continue
+                    deduped_refs.append(claim_ref)
+                    seen_refs.add(claim_ref)
+
+                source["claim_refs"] = deduped_refs
+
+        conflicts = payload.get("signal_conflicts")
+        if isinstance(conflicts, list):
+            for idx, conflict in enumerate(conflicts):
+                if not isinstance(conflict, dict):
+                    continue
+                if not str(conflict.get("conflict_id", "")).strip():
+                    conflict["conflict_id"] = f"conflict-{idx + 1}"
+                claim_refs = conflict.get("claim_refs", [])
+                if isinstance(claim_refs, list):
+                    conflict["claim_refs"] = [legacy_to_claim.get(str(ref), str(ref)) for ref in claim_refs if str(ref).strip()]
+
+        return payload
 
     @model_validator(mode="after")
     def enforce_case_lengths(self) -> "ResearchBrief":
@@ -79,6 +191,40 @@ class ResearchBrief(BaseModel):
             raise ValueError("bear_case must contain 2-5 items")
         if len(self.key_risks) < 2:
             raise ValueError("key_risks must contain at least 2 items")
+
+        claim_points: list[ClaimBase] = [*self.bull_case, *self.bear_case, *self.key_risks]
+        claim_ids = [item.claim_id for item in claim_points]
+        if len(set(claim_ids)) != len(claim_ids):
+            raise ValueError("claim_id values must be unique across bull, bear, and risk sections")
+
+        claim_id_set = set(claim_ids)
+        claim_coverage = {claim_id: 0 for claim_id in claim_ids}
+        source_refs = {f"{source.type}:{source.id}" for source in self.sources}
+
+        for source in self.sources:
+            for claim_ref in source.claim_refs:
+                if claim_ref not in claim_id_set:
+                    raise ValueError(f"source {source.type}:{source.id} references unknown claim_id: {claim_ref}")
+                claim_coverage[claim_ref] += 1
+
+        unlinked_claims = [claim_id for claim_id, count in claim_coverage.items() if count == 0]
+        if unlinked_claims:
+            raise ValueError(f"every claim must map to at least one source via claim_refs: {unlinked_claims}")
+
+        for conflict in self.signal_conflicts:
+            if len(conflict.claim_refs) < 2:
+                raise ValueError("signal_conflicts entries must reference at least 2 claims")
+            unknown_claims = [claim_ref for claim_ref in conflict.claim_refs if claim_ref not in claim_id_set]
+            if unknown_claims:
+                raise ValueError(
+                    f"signal_conflict {conflict.conflict_id} references unknown claim_ids: {unknown_claims}"
+                )
+            unknown_sources = [source_ref for source_ref in conflict.source_refs if source_ref not in source_refs]
+            if unknown_sources:
+                raise ValueError(
+                    f"signal_conflict {conflict.conflict_id} references unknown source_refs: {unknown_sources}"
+                )
+
         return self
 
 
