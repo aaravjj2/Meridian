@@ -7,7 +7,7 @@ export default defineConfig({
   reporter: 'list',
   webServer: {
     command:
-      'MERIDIAN_MODE=demo PLAYWRIGHT=true concurrently "/home/aarav/Aarav/Meridian/.venv/bin/uvicorn apps.api.main:app --port 8100" "MERIDIAN_API_BASE_URL=http://localhost:8100 npm run -w @meridian/web dev -- -p 3100"',
+      'MERIDIAN_MODE=demo PLAYWRIGHT=true concurrently "python -m uvicorn apps.api.main:app --port 8100" "MERIDIAN_API_BASE_URL=http://localhost:8100 npm run -w @meridian/web dev -- -p 3100"',
     url: 'http://localhost:3100',
     reuseExistingServer: false,
     timeout: 180000,

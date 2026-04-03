@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from datetime import UTC, datetime
@@ -14,6 +15,9 @@ from meridian.agent.prompt import build_reflection_prompt, build_system_prompt
 from meridian.agent.tools import ToolExecutor
 from meridian.normalisation.schemas import ResearchBrief, TraceStep
 from meridian.settings import FIXTURES_DIR, is_demo_mode
+
+
+logger = logging.getLogger(__name__)
 
 
 def _iso_now() -> str:
@@ -100,62 +104,124 @@ class ResearchAgent:
             yield step
 
     async def _run_demo(self, question: str) -> AsyncGenerator[TraceStep, None]:
+        """
+        Run the research agent in demo mode using a pre-recorded trace file.
+
+        Args:
+            question: The user's research question (not used in demo mode, but preserved for trace)
+
+        Yields:
+            TraceStep: Trace steps from the demo trace file
+
+        The demo mode loads a pre-recorded research trace from JSON and replays it
+        with timing to simulate real-time execution. This is used for demonstrations
+        and testing without making live API calls.
+        """
+        # Check trace file existence
         if not self.trace_path.exists():
+            logger.error(f"Demo trace file not found: {self.trace_path}")
             yield TraceStep(
                 step_index=0,
                 type="error",
-                content=f"Demo trace file not found: {self.trace_path}",
+                content=f"Demo trace file not found: {self.trace_path}. "
+                f"Please ensure demo fixtures are properly installed.",
                 timestamp=_iso_now(),
             )
             return
 
-        payload = json.loads(self.trace_path.read_text(encoding="utf-8"))
+        # Read and validate trace file
+        try:
+            trace_content = self.trace_path.read_text(encoding="utf-8")
+        except Exception as exc:
+            logger.error(f"Failed to read demo trace file: {exc}")
+            yield TraceStep(
+                step_index=0,
+                type="error",
+                content=f"Failed to read demo trace file: {exc}",
+                timestamp=_iso_now(),
+            )
+            return
+
+        # Parse JSON with error handling
+        try:
+            payload = json.loads(trace_content)
+        except json.JSONDecodeError as exc:
+            logger.error(f"Demo trace file contains invalid JSON: {exc}")
+            yield TraceStep(
+                step_index=0,
+                type="error",
+                content=f"Demo trace file contains invalid JSON: {exc}. "
+                f"Error at line {exc.lineno}, column {exc.colno}",
+                timestamp=_iso_now(),
+            )
+            return
+
+        # Validate payload structure
         if not isinstance(payload, list):
+            logger.error(f"Demo trace payload must be a JSON array, got: {type(payload).__name__}")
             yield TraceStep(
                 step_index=0,
                 type="error",
-                content="Demo trace payload must be a JSON array",
+                content="Demo trace payload must be a JSON array of trace events. "
+                f"Got: {type(payload).__name__}",
                 timestamp=_iso_now(),
             )
             return
 
-        for idx, raw in enumerate(payload):
-            await asyncio.sleep(self.demo_delay_seconds)
-            event = dict(raw)
-            event_type = str(event.get("type", "reasoning"))
-            step_index = int(event.get("step", idx))
-            timestamp = str(event.get("ts", _iso_now()))
-
-            tool_name = event.get("tool")
-            tool_args = event.get("args")
-            content: Any = event.get("content")
-
-            if event_type == "tool_result":
-                content = {"preview": event.get("preview", [])}
-            elif event_type == "reasoning":
-                content = event.get("text", "")
-            elif event_type == "brief_delta":
-                content = {
-                    "section": event.get("section"),
-                    "text": event.get("text", ""),
-                }
-            elif event_type == "complete":
-                content = {
-                    "question": question,
-                    "brief": event.get("brief", {}),
-                    "duration_ms": event.get("duration_ms", 0),
-                }
-            elif event_type == "error":
-                content = event.get("message", "Unknown error")
-
+        if not payload:
+            logger.warning("Demo trace file is empty")
             yield TraceStep(
-                step_index=step_index,
-                type=event_type,
-                tool_name=tool_name,
-                tool_args=tool_args,
-                content=content,
-                timestamp=timestamp,
+                step_index=0,
+                type="error",
+                content="Demo trace file is empty. Cannot replay demo research.",
+                timestamp=_iso_now(),
             )
+            return
+
+        # Replay trace with timing
+        for idx, raw in enumerate(payload):
+            try:
+                await asyncio.sleep(self.demo_delay_seconds)
+                event = dict(raw)
+                event_type = str(event.get("type", "reasoning"))
+                step_index = int(event.get("step", idx))
+                timestamp = str(event.get("ts", _iso_now()))
+
+                tool_name = event.get("tool")
+                tool_args = event.get("args")
+                content: Any = event.get("content")
+
+                if event_type == "tool_result":
+                    content = {"preview": event.get("preview", [])}
+                elif event_type == "reasoning":
+                    content = event.get("text", "")
+                elif event_type == "brief_delta":
+                    content = {
+                        "section": event.get("section"),
+                        "text": event.get("text", ""),
+                    }
+                elif event_type == "complete":
+                    content = {
+                        "question": question,
+                        "brief": event.get("brief", {}),
+                        "duration_ms": event.get("duration_ms", 0),
+                    }
+                elif event_type == "error":
+                    content = event.get("message", "Unknown error")
+
+                yield TraceStep(
+                    step_index=step_index,
+                    type=event_type,
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                    content=content,
+                    timestamp=timestamp,
+                )
+
+            except Exception as exc:
+                logger.error(f"Error replaying demo trace step {idx}: {exc}")
+                # Continue to next step rather than failing completely
+                continue
 
     async def _run_live(self, question: str) -> AsyncGenerator[TraceStep, None]:
         start = time.perf_counter()

@@ -158,24 +158,42 @@ Get your API key from: [Z.ai Platform](https://platform.z.ai/)
 
 ## ✅ Test Coverage
 
-```bash
-# All unit tests (44 tests)
-python -m pytest -q
+Meridian uses **4-layer validation** to ensure code quality:
 
-# TypeScript type checking
+```bash
+# Layer 1: TypeScript type checking
 npm run tsc
 
-# Frontend unit tests
-npm run vitest
+# Layer 2: Frontend unit tests (Vitest + happy-dom)
+npm run test:unit
 
-# E2E tests (Playwright)
-npm run playwright
+# Layer 3: Backend unit tests (pytest)
+python -m pytest -q
+
+# Layer 4: E2E tests (Playwright)
+npx playwright test
 ```
 
-**Current Status:**
-- ✅ 44/44 unit tests passing
-- ✅ 5/5 E2E tests passing
-- ✅ Full TypeScript type safety
+**Current Status (MVP Foundation - Phase 1 Complete):**
+- ✅ TypeScript: No type errors
+- ✅ Frontend Unit: 35/35 tests passing (QueryInput, ScreenerTable, RegimeDashboard)
+- ✅ Backend Unit: 44/44 tests passing (agent, api, features, ingestion, screener)
+- ✅ E2E: 5/5 tests passing (smoke, regime, screener, research flow, methodology)
+
+**Demo Mode Validation:**
+```bash
+# Validate demo mode fixtures and configuration
+python scripts/validate_demo.py
+```
+- ✅ All 6 validation checks passed (fixtures, trace, data sources, API health)
+
+### Troubleshooting Tests
+
+If tests fail:
+- **TypeScript errors**: Ensure `node_modules` is installed and run `npm install`
+- **Frontend test timeouts**: Increase `testTimeout` in `vitest.config.ts`
+- **Backend test failures**: Check Python environment has all dependencies: `pip install -e .[dev]`
+- **E2E test failures**: Ensure dev server is running on port 3000: `npm run dev`
 
 ---
 

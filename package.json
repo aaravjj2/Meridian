@@ -8,7 +8,8 @@
     "tsc": "tsc -p apps/web/tsconfig.json --noEmit",
     "vitest": "vitest run --config vitest.config.ts",
     "playwright": "PLAYWRIGHT=true playwright test",
-    "dev": "concurrently \"uvicorn apps.api.main:app --reload --port 8000\" \"npm run -w @meridian/web dev\""
+    "dev": "concurrently \"uvicorn apps.api.main:app --reload --port 8000\" \"npm run -w @meridian/web dev\"",
+    "harness": "python scripts/test_harness.py"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1",

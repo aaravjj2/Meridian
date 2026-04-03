@@ -12,3 +12,10 @@ export type ScreenerContract = {
   confidence: number
   scored_at: string
 }
+
+// Helper type for creating mock contracts in tests
+export type MockScreenerContract = Omit<ScreenerContract, 'dislocation' | 'direction' | 'explanation'> & {
+  dislocation?: number
+  direction?: ScreenerContract['direction']
+  explanation?: string
+}

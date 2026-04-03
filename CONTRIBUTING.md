@@ -17,6 +17,7 @@
    - `npm run tsc`
    - `npm run vitest`
    - `npm run playwright`
+   - `npm run harness` (full deterministic gate)
 
 ## Milestone gates
 
@@ -25,3 +26,4 @@ A milestone is complete only when:
 1. Its required tests pass with zero failures.
 2. A proof pack is generated via `python scripts/proof.py <milestone-slug>`.
 3. The proof pack exists under `artifacts/proof/<ISO-timestamp>-<milestone-slug>/`.
+4. Determinism evidence is attached (repeat-run signature or equivalent fixture replay proof).
