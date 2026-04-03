@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -52,10 +52,14 @@ class SourceRef(BaseModel):
     type: Literal["fred", "edgar", "news", "market"]
     id: str
     excerpt: str
+    claim_refs: list[str] = Field(default_factory=list)
+    preview: dict[str, Any] | None = None
 
 
 class ResearchBrief(BaseModel):
     question: str
+    query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None = None
+    follow_up_context: str | None = None
     thesis: str
     bull_case: list[BriefPoint]
     bear_case: list[BriefPoint]

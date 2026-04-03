@@ -5,10 +5,12 @@ import { useEffect, useRef, useState } from 'react'
 type QueryInputProps = {
   disabled: boolean
   lastQuery: string
+  sessionId: string | null
+  followUpHint: string | null
   onSubmit: (query: string) => void
 }
 
-export default function QueryInput({ disabled, lastQuery, onSubmit }: QueryInputProps) {
+export default function QueryInput({ disabled, lastQuery, sessionId, followUpHint, onSubmit }: QueryInputProps) {
   const [value, setValue] = useState('')
   const ref = useRef<HTMLInputElement>(null)
 
@@ -28,6 +30,16 @@ export default function QueryInput({ disabled, lastQuery, onSubmit }: QueryInput
   return (
     <div className="query-container" data-testid="query-container">
       <span className="query-prompt">&gt;</span>
+      {sessionId ? (
+        <span className="query-session-hint" data-testid="query-session-hint">
+          Session {sessionId.slice(0, 8)}
+        </span>
+      ) : null}
+      {followUpHint ? (
+        <span className="query-followup-hint" data-testid="query-followup-hint">
+          {followUpHint}
+        </span>
+      ) : null}
       <input
         ref={ref}
         className="query-input"

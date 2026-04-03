@@ -57,7 +57,8 @@ Request body:
 ```json
 {
   "question": "What does the current yield curve shape imply for equities over the next 6 months?",
-  "mode": "demo"
+  "mode": "demo",
+  "session_id": "sess-optional-thread-id"
 }
 ```
 
@@ -65,6 +66,7 @@ Request constraints:
 
 - question: required, minimum length 3
 - mode: optional, defaults to demo
+- session_id: optional, 4..64 chars; reused to enable in-session follow-up continuity
 
 Response content type:
 
@@ -81,7 +83,9 @@ Event payload baseline:
 {
   "type": "tool_call|tool_result|reasoning|brief_delta|complete|error|reflection",
   "step": 0,
-  "ts": "2026-04-02T00:00:00Z"
+  "ts": "2026-04-02T00:00:00Z",
+  "session_id": "sess-optional-thread-id",
+  "followup": false
 }
 ```
 
@@ -91,8 +95,16 @@ Type-specific fields:
 - tool_result: tool, preview
 - reasoning: text
 - brief_delta: section, text
-- complete: brief, duration_ms
+- complete: brief, duration_ms, query_class, session_context_used
 - error: message
+
+Brief payload additions in complete events:
+
+- query_class: macro_outlook | event_probability | ticker_macro
+- follow_up_context: optional string summarizing prior-question linkage
+- methodology_summary: optional string explaining evidence synthesis process
+- sources[].claim_refs: array of claim pointers (for example bull_case[0])
+- sources[].preview: structured preview metadata keyed by source type
 
 Semantics:
 

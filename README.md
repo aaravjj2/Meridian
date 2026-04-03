@@ -201,7 +201,7 @@ Count convention used in proof and reporting: **test cases**.
 
 For exact latest gate counts and outcomes, use the newest manifest under:
 
-- `artifacts/proof/2026-04-03T20-33-19Z-final-cleanup-proof/MANIFEST.md`
+- `artifacts/proof/2026-04-03T21-10-23Z-phase-2-terminal-depth/MANIFEST.md`
 - `artifacts/proof/<timestamp>-<slug>/MANIFEST.md`
 
 **Demo Mode Validation:**

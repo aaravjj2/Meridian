@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 
 import SeriesChart from '../Charts/SeriesChart'
-import type { ResearchBrief } from './types'
+import type { ResearchBrief, SourceItem } from './types'
 
 type ResearchPanelProps = {
   status: 'empty' | 'loading' | 'error' | 'complete'
@@ -24,6 +24,71 @@ const SAMPLE_SERIES = [
   { date: '2026-01-01', value: -0.29 },
   { date: '2026-02-01', value: -0.21 },
 ]
+
+function queryClassLabel(queryClass: ResearchBrief['query_class']): string {
+  if (queryClass === 'event_probability') return 'EVENT PROBABILITY'
+  if (queryClass === 'ticker_macro') return 'TICKER + MACRO'
+  return 'MACRO OUTLOOK'
+}
+
+function formatPreviewValue(value: unknown): string {
+  if (value === null || value === undefined) return 'n/a'
+  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(4)
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) return `${value.length} items`
+  if (typeof value === 'object') return 'object'
+  return String(value)
+}
+
+function extractSeriesPoints(source: SourceItem): Array<{ date: string; value: number }> {
+  const maybePoints = source.preview?.points
+  if (!Array.isArray(maybePoints)) return SAMPLE_SERIES
+
+  const parsed = maybePoints
+    .map((point) => {
+      if (!point || typeof point !== 'object') return null
+      const date = (point as { date?: unknown }).date
+      const value = (point as { value?: unknown }).value
+      if (typeof date !== 'string' || typeof value !== 'number') return null
+      return { date, value }
+    })
+    .filter((item): item is { date: string; value: number } => item !== null)
+
+  return parsed.length >= 2 ? parsed : SAMPLE_SERIES
+}
+
+function SourcePreview({ source, idx }: { source: SourceItem; idx: number }) {
+  const preview = source.preview ?? {}
+  const entries = Object.entries(preview).filter(([key]) => key !== 'points')
+
+  if (source.type === 'fred') {
+    return (
+      <div className="source-preview" data-testid={`source-preview-${idx}`}>
+        <div className="source-preview-grid">
+          {entries.map(([key, value]) => (
+            <div key={key} className="source-preview-kv">
+              <span className="source-preview-key">{key}</span>
+              <span className="source-preview-value">{formatPreviewValue(value)}</span>
+            </div>
+          ))}
+        </div>
+        <SeriesChart id={`${source.id}-${idx}`} data={extractSeriesPoints(source)} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="source-preview source-preview-generic" data-testid={`source-preview-${idx}`}>
+      {entries.length === 0 ? <p>No preview metadata available.</p> : null}
+      {entries.map(([key, value]) => (
+        <div key={key} className="source-preview-kv">
+          <span className="source-preview-key">{key}</span>
+          <span className="source-preview-value">{formatPreviewValue(value)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function ResearchPanel({ status, brief, errorMessage }: ResearchPanelProps) {
   const [expandedSource, setExpandedSource] = useState<string | null>(null)
@@ -72,6 +137,21 @@ export default function ResearchPanel({ status, brief, errorMessage }: ResearchP
 
   return (
     <div className="brief-complete" data-testid="brief-complete">
+      <section className="brief-meta" data-testid="brief-meta">
+        <span className="block-label">QUERY CLASS</span>
+        <p data-testid="brief-query-class">{queryClassLabel(brief.query_class)}</p>
+        <p className="brief-question" data-testid="brief-question">
+          {brief.question}
+        </p>
+      </section>
+
+      {brief.follow_up_context ? (
+        <section className="brief-context" data-testid="brief-followup-context">
+          <span className="block-label">FOLLOW-UP CONTEXT</span>
+          <p>{brief.follow_up_context}</p>
+        </section>
+      ) : null}
+
       <section className="thesis-block" data-testid="thesis-summary">
         <span className="block-label">THESIS</span>
         <p>{brief.thesis}</p>
@@ -120,6 +200,23 @@ export default function ResearchPanel({ status, brief, errorMessage }: ResearchP
           </div>
           <span>{brief.confidence} / 5</span>
         </div>
+        <p className="confidence-rationale" data-testid="confidence-rationale">
+          {brief.confidence_rationale}
+        </p>
+      </section>
+
+      {brief.methodology_summary ? (
+        <section className="brief-section" data-testid="methodology-summary">
+          <span className="block-label">METHODOLOGY</span>
+          <p>{brief.methodology_summary}</p>
+        </section>
+      ) : null}
+
+      <section className="brief-section" data-testid="session-lineage">
+        <span className="block-label">LINEAGE</span>
+        <p>
+          Trace steps referenced: {brief.trace_steps.length > 0 ? `${brief.trace_steps[0]}-${brief.trace_steps[brief.trace_steps.length - 1]}` : 'none'}
+        </p>
       </section>
 
       <section className="brief-section" data-testid="source-list">
@@ -132,13 +229,20 @@ export default function ResearchPanel({ status, brief, errorMessage }: ResearchP
                 type="button"
                 className="source-row"
                 data-testid={`source-item-${idx}`}
+                aria-expanded={expanded}
+                data-preview-kind={source.preview?.kind ?? 'none'}
                 onClick={() => setExpandedSource(expanded ? null : source.id)}
               >
                 <span className={sourceBadgeClass(source.type)}>{source.type.toUpperCase()}</span>
                 <span className="source-id">{source.id}</span>
                 <span className="source-excerpt">{source.excerpt}</span>
               </button>
-              {expanded && source.type === 'fred' ? <SeriesChart id={source.id} data={SAMPLE_SERIES} /> : null}
+              {source.claim_refs && source.claim_refs.length > 0 ? (
+                <div className="source-claims" data-testid={`source-claims-${idx}`}>
+                  Claims: {source.claim_refs.join(', ')}
+                </div>
+              ) : null}
+              {expanded ? <SourcePreview source={source} idx={idx} /> : null}
             </div>
           )
         })}
