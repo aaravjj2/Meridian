@@ -1,0 +1,35 @@
+import { expect, test } from '@playwright/test'
+
+test('workspace persistence: save, reopen, export, and continue', async ({ page }) => {
+  await page.goto('/')
+
+  await page.getByTestId('query-input').fill('What does the current yield curve shape imply for equities over the next 6 months?')
+  await page.getByTestId('query-input').press('Enter')
+
+  await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 30000 })
+  await page.getByTestId('claim-link-bull-1-inversion-easing').click()
+  await expect(page.getByTestId('evidence-drilldown')).toBeVisible()
+
+  await page.getByTestId('save-session-button').click()
+  await expect(page.getByTestId('workspace-status')).toContainText('Saved session', { timeout: 15000 })
+  await expect(page.getByTestId('workspace-item-0')).toBeVisible()
+
+  await page.getByTestId('workspace-reopen-0').click()
+  await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByTestId('trace-step-0')).toBeVisible()
+  await page.getByTestId('claim-link-bull-1-inversion-easing').click()
+  await expect(page.getByTestId('active-claim-id')).toContainText('bull-1-inversion-easing')
+  await expect(page.getByTestId('source-preview-0')).toBeVisible()
+
+  await page.getByTestId('workspace-export-current-json').click()
+  await expect(page.getByTestId('workspace-status')).toContainText('Exported', { timeout: 10000 })
+  await page.getByTestId('workspace-export-current-markdown').click()
+  await expect(page.getByTestId('workspace-status')).toContainText('Exported', { timeout: 10000 })
+
+  await page.getByTestId('query-input').fill('Continue from this session with an event-probability perspective.')
+  await page.getByTestId('query-input').press('Enter')
+
+  await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 30000 })
+  await expect(page.getByTestId('query-session-hint')).toBeVisible()
+  await expect(page.getByTestId('brief-followup-context')).toBeVisible()
+})

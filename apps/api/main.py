@@ -10,6 +10,7 @@ from apps.api.routers.markets import router as markets_router
 from apps.api.routers.regime import router as regime_router
 from apps.api.routers.research import router as research_router
 from apps.api.routers.screener import router as screener_router
+from apps.api.routers.workspace import router as workspace_router
 from meridian.agent.react import ResearchAgent
 from meridian.agent.tools import ToolExecutor
 from meridian.agent.websocket import (
@@ -29,6 +30,7 @@ app.include_router(research_router, prefix="/api/v1")
 app.include_router(screener_router, prefix="/api/v1")
 app.include_router(regime_router, prefix="/api/v1")
 app.include_router(markets_router, prefix="/api/v1")
+app.include_router(workspace_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

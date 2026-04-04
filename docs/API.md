@@ -114,6 +114,66 @@ Semantics:
 - on timeout/error, an error event is emitted
 - complete is always emitted before stream termination (success or fallback)
 
+### Workspace Session Persistence
+
+The workspace API is single-user and file-backed for local/demo-safe operation.
+
+### GET /api/v1/research/sessions
+
+Lists saved research session summaries.
+
+Response:
+
+```json
+{
+  "sessions": [
+    {
+      "id": "rs-20260403235959-8f2c1a3d",
+      "question": "What does the current yield curve imply for equities?",
+      "mode": "demo",
+      "session_id": "sess-abcd1234",
+      "query_class": "macro_outlook",
+      "follow_up_context": "Follow-up to prior question: ...",
+      "saved_at": "2026-04-03T23:59:59Z",
+      "canonical_signature": "<sha256>"
+    }
+  ],
+  "count": 1
+}
+```
+
+### POST /api/v1/research/sessions
+
+Saves a completed research workspace state.
+
+Request body includes:
+
+- question
+- mode (demo | live)
+- session_id (runtime thread id)
+- brief (full ResearchBrief payload)
+- trace_events (SSE-compatible trace payload)
+- evidence_state (active_claim_id, expanded_source_id)
+
+Response is the full saved session record including `id` and `canonical_signature`.
+
+### GET /api/v1/research/sessions/{saved_id}
+
+Returns a full saved session record including brief, trace, and evidence state.
+
+### GET /api/v1/research/sessions/{saved_id}/export
+
+Exports a saved session for offline review.
+
+Query parameter:
+
+- format: `json` | `markdown`
+
+Behavior:
+
+- `format=json`: structured machine-readable full session payload
+- `format=markdown`: analyst-readable report with thesis, claims, sources, conflicts, and trace payload
+
 ### GET /api/v1/screener
 
 Returns ranked dislocation contracts from fixture-backed snapshot in demo mode.

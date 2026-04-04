@@ -1,0 +1,169 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from apps.api.main import app
+from apps.api.routers import research as research_router
+from meridian.normalisation.schemas import ResearchBrief
+from meridian.workspace import session_store as session_store_module
+
+
+client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_workspace_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    store_path = tmp_path / "research_sessions"
+    monkeypatch.setenv("MERIDIAN_SESSION_STORE_DIR", str(store_path))
+    session_store_module._STORE = None
+    research_router.SESSION_CONTEXT.clear()
+    yield
+    session_store_module._STORE = None
+    research_router.SESSION_CONTEXT.clear()
+
+
+def _collect_events(question: str, session_id: str | None = None) -> list[dict]:
+    events: list[dict] = []
+    payload: dict[str, object] = {"question": question, "mode": "demo"}
+    if session_id:
+        payload["session_id"] = session_id
+
+    with client.stream("POST", "/api/v1/research", json=payload) as response:
+        assert response.status_code == 200
+        for line in response.iter_lines():
+            if not line or not line.startswith("data: "):
+                continue
+            events.append(json.loads(line[6:]))
+    return events
+
+
+def _save_payload(question: str, session_id: str, events: list[dict], brief: dict) -> dict:
+    return {
+        "question": question,
+        "mode": "demo",
+        "session_id": session_id,
+        "brief": brief,
+        "trace_events": events,
+        "evidence_state": {
+            "active_claim_id": brief["bull_case"][0]["claim_id"],
+            "expanded_source_id": f"{brief['sources'][0]['type']}:{brief['sources'][0]['id']}",
+        },
+    }
+
+
+def test_workspace_save_list_get_and_export_roundtrip() -> None:
+    question = "What does the current yield curve shape imply for equities over the next 6 months?"
+    thread_id = "phase4-workspace-thread"
+    events = _collect_events(question=question, session_id=thread_id)
+    complete = events[-1]
+
+    save_response = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(question=question, session_id=thread_id, events=events, brief=complete["brief"]),
+    )
+    assert save_response.status_code == 200
+
+    saved = save_response.json()
+    assert saved["id"].startswith("rs-")
+    assert saved["mode"] == "demo"
+    assert saved["session_id"] == thread_id
+    assert saved["canonical_signature"]
+
+    listed = client.get("/api/v1/research/sessions")
+    assert listed.status_code == 200
+    listing = listed.json()
+    assert listing["count"] == 1
+    assert listing["sessions"][0]["id"] == saved["id"]
+
+    loaded = client.get(f"/api/v1/research/sessions/{saved['id']}")
+    assert loaded.status_code == 200
+    loaded_payload = loaded.json()
+    brief = ResearchBrief.model_validate(loaded_payload["brief"])
+    assert brief.thesis
+    assert len(loaded_payload["trace_events"]) >= 5
+    assert loaded_payload["evidence_state"]["active_claim_id"]
+
+    exported_json = client.get(f"/api/v1/research/sessions/{saved['id']}/export", params={"format": "json"})
+    assert exported_json.status_code == 200
+    assert "application/json" in exported_json.headers["content-type"]
+    json_payload = exported_json.json()
+    assert json_payload["question"] == question
+    assert json_payload["brief"]["thesis"]
+    assert json_payload["brief"]["signal_conflicts"]
+    assert json_payload["trace_events"]
+
+    exported_md = client.get(f"/api/v1/research/sessions/{saved['id']}/export", params={"format": "markdown"})
+    assert exported_md.status_code == 200
+    assert "text/markdown" in exported_md.headers["content-type"]
+    markdown = exported_md.text
+    assert "## Thesis" in markdown
+    assert "## Signal Conflicts" in markdown
+    assert "## Trace Payload" in markdown
+
+
+def test_workspace_saved_session_signature_is_deterministic_for_demo_runs() -> None:
+    question = "Frame AAPL versus macro conditions for a cautious equity book."
+
+    events_a = _collect_events(question=question, session_id="phase4-det-thread-a")
+    complete_a = events_a[-1]
+    saved_a = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=question,
+            session_id="phase4-det-thread-a",
+            events=events_a,
+            brief=complete_a["brief"],
+        ),
+    )
+    assert saved_a.status_code == 200
+
+    events_b = _collect_events(question=question, session_id="phase4-det-thread-b")
+    complete_b = events_b[-1]
+    saved_b = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=question,
+            session_id="phase4-det-thread-b",
+            events=events_b,
+            brief=complete_b["brief"],
+        ),
+    )
+    assert saved_b.status_code == 200
+
+    assert saved_a.json()["canonical_signature"] == saved_b.json()["canonical_signature"]
+
+
+def test_workspace_continue_from_saved_restores_followup_context() -> None:
+    initial_question = "Give me a macro outlook for the next two quarters."
+    follow_up = "How should I interpret the event probability if inflation re-accelerates?"
+    thread_id = "phase4-continue-thread"
+
+    initial_events = _collect_events(question=initial_question, session_id=thread_id)
+    initial_complete = initial_events[-1]
+
+    saved_response = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=initial_question,
+            session_id=thread_id,
+            events=initial_events,
+            brief=initial_complete["brief"],
+        ),
+    )
+    assert saved_response.status_code == 200
+
+    # Simulate server restart by clearing in-memory continuity cache.
+    research_router.SESSION_CONTEXT.clear()
+
+    continued_events = _collect_events(question=follow_up, session_id=thread_id)
+    continued_complete = continued_events[-1]
+
+    assert continued_complete["followup"] is True
+    assert continued_complete["session_context_used"] is True
+    continued_brief = ResearchBrief.model_validate(continued_complete["brief"])
+    assert continued_brief.follow_up_context is not None
+    assert initial_question.lower() in continued_brief.follow_up_context.lower()

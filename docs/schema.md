@@ -43,6 +43,22 @@ Validation notes:
 - `content?: str | dict | list`
 - `timestamp: str (ISO)`
 
+## SavedResearchSession
+
+- `id: str` (stable saved-session identifier)
+- `question: str`
+- `mode: "demo" | "live"`
+- `session_id: str` (runtime research-thread id used for follow-ups)
+- `query_class: "macro_outlook" | "event_probability" | "ticker_macro" | null`
+- `follow_up_context: str | null`
+- `brief: ResearchBrief`
+- `trace_events: list[SavedTraceEvent]`
+- `evidence_state: { active_claim_id, expanded_source_id } | null`
+- `created_at: str (ISO)`
+- `saved_at: str (ISO)`
+- `updated_at: str (ISO)`
+- `canonical_signature: str` (SHA256 of canonical content for deterministic audit checks)
+
 ## MispricingScore
 
 - `market_id: str`

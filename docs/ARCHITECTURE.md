@@ -312,6 +312,22 @@ trace_steps: int[]
 # SignalConflict captures contradictory evidence with claim_refs and source_refs.
 ```
 
+### SavedResearchSession
+```python
+id: str
+question: str
+mode: Literal["demo", "live"]
+session_id: str
+brief: ResearchBrief
+trace_events: SavedTraceEvent[]
+evidence_state?: { active_claim_id, expanded_source_id }
+saved_at: str
+canonical_signature: str
+```
+
+The workspace persistence layer stores these records as JSON files in
+`data/processed/research_sessions/` for single-user local/demo-safe operation.
+
 ---
 
 ## Deployment Architecture

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { createParser } from 'eventsource-parser'
 
@@ -9,7 +9,23 @@ import QueryInput from '@/components/Terminal/QueryInput'
 import ResearchPanel from '@/components/Terminal/ResearchPanel'
 import SplitPane from '@/components/Terminal/SplitPane'
 import TracePanel from '@/components/Terminal/TracePanel'
-import type { ResearchBrief, TraceEvent } from '@/components/Terminal/types'
+import WorkspacePanel from '@/components/Terminal/WorkspacePanel'
+import type {
+  EvidenceNavigationState,
+  ResearchBrief,
+  SavedResearchSession,
+  SavedResearchSessionSummary,
+  TraceEvent,
+} from '@/components/Terminal/types'
+
+type SaveResearchSessionRequest = {
+  question: string
+  mode: 'demo' | 'live'
+  session_id: string
+  brief: ResearchBrief
+  trace_events: TraceEvent[]
+  evidence_state: EvidenceNavigationState | null
+}
 
 const FALLBACK_EVENTS: TraceEvent[] = [
   {
@@ -317,6 +333,83 @@ async function streamResearch(
   }
 }
 
+async function listSavedSessions(): Promise<SavedResearchSessionSummary[]> {
+  const response = await fetch('/api/v1/research/sessions')
+  if (!response.ok) {
+    throw new Error(`Failed to list saved sessions: ${response.status}`)
+  }
+  const payload = (await response.json()) as { sessions?: SavedResearchSessionSummary[] }
+  return payload.sessions ?? []
+}
+
+async function saveSession(payload: SaveResearchSessionRequest): Promise<SavedResearchSession> {
+  const response = await fetch('/api/v1/research/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to save session: ${response.status}`)
+  }
+  return (await response.json()) as SavedResearchSession
+}
+
+async function getSavedSession(savedId: string): Promise<SavedResearchSession> {
+  const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}`)
+  if (!response.ok) {
+    throw new Error(`Failed to load saved session: ${response.status}`)
+  }
+  return (await response.json()) as SavedResearchSession
+}
+
+async function exportSavedSession(savedId: string, format: 'json' | 'markdown'): Promise<Response> {
+  const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}/export?format=${format}`)
+  if (!response.ok) {
+    throw new Error(`Failed to export session: ${response.status}`)
+  }
+  return response
+}
+
+function summaryFromSaved(session: SavedResearchSession): SavedResearchSessionSummary {
+  return {
+    id: session.id,
+    question: session.question,
+    mode: session.mode,
+    session_id: session.session_id,
+    query_class: session.query_class,
+    follow_up_context: session.follow_up_context,
+    saved_at: session.saved_at,
+    canonical_signature: session.canonical_signature,
+  }
+}
+
+function triggerDownload(response: Response, content: Blob): void {
+  if (typeof document === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+    return
+  }
+
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const filenameMatch = disposition.match(/filename=([^;]+)/i)
+  const fallbackName = response.headers.get('content-type')?.includes('markdown') ? 'meridian-session.md' : 'meridian-session.json'
+  const filename = filenameMatch ? filenameMatch[1].replace(/"/g, '') : fallbackName
+
+  const objectUrl = URL.createObjectURL(content)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.download = filename
+  anchor.style.display = 'none'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(objectUrl)
+}
+
+const EMPTY_EVIDENCE_STATE: EvidenceNavigationState = {
+  active_claim_id: null,
+  expanded_source_id: null,
+}
+
 export default function HomePage() {
   const [traceSteps, setTraceSteps] = useState<TraceEvent[]>([])
   const [briefState, setBriefState] = useState<'empty' | 'loading' | 'error' | 'complete'>('empty')
@@ -327,6 +420,152 @@ export default function HomePage() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [queryHistory, setQueryHistory] = useState<string[]>([])
   const [followUpHint, setFollowUpHint] = useState<string | null>(null)
+  const [historyState, setHistoryState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [historyError, setHistoryError] = useState('')
+  const [savedSessions, setSavedSessions] = useState<SavedResearchSessionSummary[]>([])
+  const [activeSavedSessionId, setActiveSavedSessionId] = useState<string | null>(null)
+  const [saveBusy, setSaveBusy] = useState(false)
+  const [exportBusy, setExportBusy] = useState(false)
+  const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null)
+  const [evidenceState, setEvidenceState] = useState<EvidenceNavigationState>(EMPTY_EVIDENCE_STATE)
+  const [evidenceHydrationKey, setEvidenceHydrationKey] = useState(0)
+
+  const canSaveCurrent = briefState === 'complete' && !!brief && traceSteps.length > 0 && !running
+
+  const handleEvidenceStateChange = useCallback((state: EvidenceNavigationState) => {
+    setEvidenceState((previous) => {
+      // Ignore transient empty updates so reopened evidence state remains stable.
+      if (
+        previous.active_claim_id &&
+        !state.active_claim_id &&
+        !state.expanded_source_id
+      ) {
+        return previous
+      }
+      if (
+        previous.active_claim_id === state.active_claim_id &&
+        previous.expanded_source_id === state.expanded_source_id
+      ) {
+        return previous
+      }
+      return state
+    })
+  }, [])
+
+  const loadWorkspaceSessions = useCallback(async () => {
+    setHistoryState('loading')
+    setHistoryError('')
+    try {
+      const sessions = await listSavedSessions()
+      setSavedSessions(sessions)
+      setHistoryState('ready')
+    } catch (loadError) {
+      setHistoryState('error')
+      setHistoryError(loadError instanceof Error ? loadError.message : 'Failed to load saved sessions')
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadWorkspaceSessions()
+  }, [loadWorkspaceSessions])
+
+  const saveCurrentSession = useCallback(
+    async (options?: { silent?: boolean }): Promise<SavedResearchSession | null> => {
+      if (!brief || !canSaveCurrent) {
+        if (!options?.silent) {
+          setWorkspaceStatus('Run research to completion before saving.')
+        }
+        return null
+      }
+
+      setSaveBusy(true)
+      try {
+        const payload: SaveResearchSessionRequest = {
+          question: brief.question || lastQuery,
+          mode: 'demo',
+          session_id: sessionId ?? 'local-demo',
+          brief,
+          trace_events: traceSteps,
+          evidence_state: evidenceState,
+        }
+
+        const saved = await saveSession(payload)
+        const summary = summaryFromSaved(saved)
+        setSavedSessions((previous) => {
+          const deduped = previous.filter((item) => item.id !== summary.id)
+          return [summary, ...deduped]
+        })
+        setHistoryState('ready')
+        setActiveSavedSessionId(saved.id)
+        setSessionId(saved.session_id)
+        if (saved.follow_up_context) {
+          setFollowUpHint(saved.follow_up_context)
+        }
+        if (!options?.silent) {
+          setWorkspaceStatus(`Saved session ${saved.id}`)
+        }
+        return saved
+      } catch (saveError) {
+        setWorkspaceStatus(saveError instanceof Error ? saveError.message : 'Failed to save session')
+        return null
+      } finally {
+        setSaveBusy(false)
+      }
+    },
+    [brief, canSaveCurrent, evidenceState, lastQuery, sessionId, traceSteps]
+  )
+
+  const reopenSession = useCallback(async (savedId: string) => {
+    setWorkspaceStatus(null)
+    try {
+      const saved = await getSavedSession(savedId)
+      setBrief(saved.brief)
+      setBriefState('complete')
+      setTraceSteps(saved.trace_events)
+      setError('')
+      setRunning(false)
+      setLastQuery(saved.question)
+      setSessionId(saved.session_id)
+      setQueryHistory((previous) => [...previous, saved.question].slice(-6))
+      setFollowUpHint(saved.follow_up_context ?? null)
+      setEvidenceState(saved.evidence_state ?? EMPTY_EVIDENCE_STATE)
+      setEvidenceHydrationKey((previous) => previous + 1)
+      setActiveSavedSessionId(saved.id)
+      setWorkspaceStatus(`Reopened session ${saved.id}`)
+    } catch (reopenError) {
+      setWorkspaceStatus(reopenError instanceof Error ? reopenError.message : 'Failed to reopen session')
+    }
+  }, [])
+
+  const exportSessionById = useCallback(async (savedId: string, format: 'json' | 'markdown') => {
+    setExportBusy(true)
+    try {
+      const response = await exportSavedSession(savedId, format)
+      const blob = await response.blob()
+      triggerDownload(response, blob)
+      setWorkspaceStatus(`Exported ${savedId} as ${format}`)
+    } catch (exportError) {
+      setWorkspaceStatus(exportError instanceof Error ? exportError.message : 'Export failed')
+    } finally {
+      setExportBusy(false)
+    }
+  }, [])
+
+  const exportCurrentSession = useCallback(
+    async (format: 'json' | 'markdown') => {
+      let exportTarget = activeSavedSessionId
+      if (!exportTarget) {
+        const saved = await saveCurrentSession({ silent: true })
+        if (!saved) {
+          setWorkspaceStatus('Unable to export: no completed session is available.')
+          return
+        }
+        exportTarget = saved.id
+      }
+      await exportSessionById(exportTarget, format)
+    },
+    [activeSavedSessionId, exportSessionById, saveCurrentSession]
+  )
 
   async function runQuery(question: string) {
     const priorQuestion = queryHistory.length > 0 ? queryHistory[queryHistory.length - 1] : null
@@ -337,6 +576,10 @@ export default function HomePage() {
     setBrief(null)
     setTraceSteps([])
     setBriefState('loading')
+    setActiveSavedSessionId(null)
+    setEvidenceState(EMPTY_EVIDENCE_STATE)
+    setEvidenceHydrationKey((previous) => previous + 1)
+    setWorkspaceStatus(null)
 
     let resolvedSessionId = sessionId
     let sessionFollowUp = false
@@ -392,7 +635,49 @@ export default function HomePage() {
     <main className="terminal-page" data-testid="research-page">
       <RegimeDashboard />
       <SplitPane
-        left={<ResearchPanel status={briefState} brief={brief} errorMessage={error} />}
+        left={
+          <>
+            <WorkspacePanel
+              historyState={historyState}
+              historyError={historyError}
+              sessions={savedSessions}
+              activeSavedSessionId={activeSavedSessionId}
+              canSaveCurrent={canSaveCurrent}
+              saveBusy={saveBusy}
+              exportBusy={exportBusy}
+              statusMessage={workspaceStatus}
+              onRefresh={() => {
+                void loadWorkspaceSessions()
+              }}
+              onSaveCurrent={() => {
+                void saveCurrentSession()
+              }}
+              onExportCurrentJson={() => {
+                void exportCurrentSession('json')
+              }}
+              onExportCurrentMarkdown={() => {
+                void exportCurrentSession('markdown')
+              }}
+              onReopen={(savedId) => {
+                void reopenSession(savedId)
+              }}
+              onExportJson={(savedId) => {
+                void exportSessionById(savedId, 'json')
+              }}
+              onExportMarkdown={(savedId) => {
+                void exportSessionById(savedId, 'markdown')
+              }}
+            />
+            <ResearchPanel
+              status={briefState}
+              brief={brief}
+              errorMessage={error}
+              initialEvidenceState={evidenceState}
+              evidenceHydrationKey={evidenceHydrationKey}
+              onEvidenceStateChange={handleEvidenceStateChange}
+            />
+          </>
+        }
         right={<TracePanel steps={traceSteps} />}
       />
       <QueryInput

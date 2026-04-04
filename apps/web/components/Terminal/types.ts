@@ -57,6 +57,11 @@ export type SignalConflict = {
   source_refs: string[]
 }
 
+export type EvidenceNavigationState = {
+  active_claim_id: string | null
+  expanded_source_id: string | null
+}
+
 export type ResearchBrief = {
   question: string
   query_class?: 'macro_outlook' | 'event_probability' | 'ticker_macro'
@@ -72,4 +77,23 @@ export type ResearchBrief = {
   signal_conflicts?: SignalConflict[]
   created_at: string
   trace_steps: number[]
+}
+
+export type SavedResearchSessionSummary = {
+  id: string
+  question: string
+  mode: 'demo' | 'live'
+  session_id: string
+  query_class?: ResearchBrief['query_class']
+  follow_up_context?: string | null
+  saved_at: string
+  canonical_signature: string
+}
+
+export type SavedResearchSession = SavedResearchSessionSummary & {
+  brief: ResearchBrief
+  trace_events: TraceEvent[]
+  evidence_state?: EvidenceNavigationState | null
+  created_at: string
+  updated_at: string
 }

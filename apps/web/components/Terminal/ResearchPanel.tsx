@@ -3,12 +3,15 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import SeriesChart from '../Charts/SeriesChart'
-import type { ResearchBrief, SourceItem } from './types'
+import type { EvidenceNavigationState, ResearchBrief, SourceItem } from './types'
 
 type ResearchPanelProps = {
   status: 'empty' | 'loading' | 'error' | 'complete'
   brief: ResearchBrief | null
   errorMessage: string
+  initialEvidenceState?: EvidenceNavigationState | null
+  evidenceHydrationKey?: number
+  onEvidenceStateChange?: (state: EvidenceNavigationState) => void
 }
 
 function sourceBadgeClass(type: string): string {
@@ -105,7 +108,14 @@ function SourcePreview({ source, idx }: { source: SourceItem; idx: number }) {
   )
 }
 
-export default function ResearchPanel({ status, brief, errorMessage }: ResearchPanelProps) {
+export default function ResearchPanel({
+  status,
+  brief,
+  errorMessage,
+  initialEvidenceState,
+  evidenceHydrationKey,
+  onEvidenceStateChange,
+}: ResearchPanelProps) {
   const [expandedSource, setExpandedSource] = useState<string | null>(null)
   const [activeClaimId, setActiveClaimId] = useState<string | null>(null)
 
@@ -173,9 +183,16 @@ export default function ResearchPanel({ status, brief, errorMessage }: ResearchP
   }, [brief, activeClaimId, claimToSourceKeys])
 
   useEffect(() => {
-    setExpandedSource(null)
-    setActiveClaimId(null)
-  }, [brief?.created_at, brief?.question])
+    setExpandedSource(initialEvidenceState?.expanded_source_id ?? null)
+    setActiveClaimId(initialEvidenceState?.active_claim_id ?? null)
+  }, [brief?.created_at, brief?.question, evidenceHydrationKey])
+
+  useEffect(() => {
+    onEvidenceStateChange?.({
+      active_claim_id: activeClaimId,
+      expanded_source_id: expandedSource,
+    })
+  }, [activeClaimId, expandedSource, onEvidenceStateChange])
 
   function focusClaim(claimId: string): void {
     setActiveClaimId(claimId)

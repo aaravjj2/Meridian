@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from meridian.agent.react import ResearchAgent
 from meridian.normalisation.schemas import ResearchBrief, TraceStep
+from meridian.workspace.session_store import get_session_store
 
 
 router = APIRouter(tags=["research"])
@@ -81,6 +82,23 @@ def _update_session_context(session_id: str, brief_payload: dict[str, Any], ques
             SESSION_CONTEXT.pop(oldest_id, None)
 
 
+def _restore_context_from_saved_session(session_id: str) -> dict[str, Any] | None:
+    store = get_session_store()
+    saved = store.get_latest_for_session(session_id)
+    if saved is None:
+        return None
+
+    key_sources = [f"{source.type}:{source.id}" for source in saved.brief.sources[:4]]
+    return {
+        "last_question": saved.question,
+        "last_thesis": saved.brief.thesis,
+        "last_query_class": saved.brief.query_class,
+        "key_sources": key_sources,
+        "updated_at": _iso_now(),
+        "restored_from_saved_session": saved.id,
+    }
+
+
 def _trace_to_event(step: TraceStep) -> dict[str, Any]:
     event = {
         "type": step.type,
@@ -134,6 +152,11 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
     async def stream_events() -> AsyncGenerator[str, None]:
         session_id = _resolve_session_id(request.session_id)
         prior_context = SESSION_CONTEXT.get(session_id)
+        if prior_context is None and request.session_id:
+            restored_context = _restore_context_from_saved_session(session_id)
+            if restored_context is not None:
+                prior_context = restored_context
+                SESSION_CONTEXT[session_id] = restored_context
 
         agent = ResearchAgent(demo_mode=request.mode == "demo")
         complete_emitted = False

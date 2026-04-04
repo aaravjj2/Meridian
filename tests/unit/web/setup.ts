@@ -21,6 +21,10 @@ class ResizeObserverMock {
 }
 
 vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+  configurable: true,
+  value: vi.fn(),
+})
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: 'bypass' })
