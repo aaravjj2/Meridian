@@ -55,6 +55,7 @@ type WorkspacePanelProps = {
     payload: { title?: string; summary?: string | null; notes?: string | null }
   ) => void
   onCollectionAddActiveSession: () => void
+  onCollectionExportBundle: () => void
   onCollectionRemoveSession: (sessionId: string) => void
   onCollectionReorderSession: (sessionId: string, direction: 'up' | 'down') => void
   onThreadTimelineRefresh: () => void
@@ -152,6 +153,7 @@ export default function WorkspacePanel({
   onCollectionOpen,
   onCollectionUpdate,
   onCollectionAddActiveSession,
+  onCollectionExportBundle,
   onCollectionRemoveSession,
   onCollectionReorderSession,
   onThreadTimelineRefresh,
@@ -453,6 +455,14 @@ export default function WorkspacePanel({
                 onClick={onCollectionAddActiveSession}
               >
                 Add Active Session
+              </button>
+              <button
+                type="button"
+                data-testid="workspace-collection-export-bundle"
+                disabled={collectionBusy || exportBusy}
+                onClick={onCollectionExportBundle}
+              >
+                Export Collection Bundle
               </button>
             </div>
             <p className="workspace-status" data-testid="workspace-collection-missing-count">

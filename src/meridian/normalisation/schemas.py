@@ -455,3 +455,52 @@ class ResearchThreadTimelineDetail(BaseModel):
     thread_session_id: str
     timeline: list[ResearchCollectionTimelineEntry] = Field(default_factory=list)
     timeline_signature: str
+
+
+class BundleInventoryEntry(BaseModel):
+    file: str
+    media_type: str
+    sha256: str
+    size_bytes: int = Field(ge=0)
+
+
+class SessionBundleManifest(BaseModel):
+    schema: str
+    bundle_kind: Literal["session"]
+    generated_at: str
+    saved_id: str
+    thread_session_id: str
+    query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None = None
+    timeline_signature: str | None = None
+    compare_previous_saved_id: str | None = None
+    deterministic_signature: str
+    equality_checks: dict[str, bool] = Field(default_factory=dict)
+    section_signatures: dict[str, str] = Field(default_factory=dict)
+    inventory: list[BundleInventoryEntry] = Field(default_factory=list)
+
+
+class SessionBundleExportV2(BaseModel):
+    bundle_version: Literal["wave14-v2"]
+    bundle_kind: Literal["session"]
+    exported_at: str
+    manifest: SessionBundleManifest
+    files: dict[str, Any] = Field(default_factory=dict)
+
+
+class CollectionBundleManifest(BaseModel):
+    schema: str
+    bundle_kind: Literal["collection"]
+    collection_id: str
+    collection_signature: str | None = None
+    timeline_signature: str | None = None
+    deterministic_signature: str
+    equality_checks: dict[str, bool] = Field(default_factory=dict)
+    section_signatures: dict[str, str] = Field(default_factory=dict)
+    inventory: list[BundleInventoryEntry] = Field(default_factory=list)
+
+
+class CollectionBundleExportV2(BaseModel):
+    bundle_version: Literal["wave14-v2"]
+    bundle_kind: Literal["collection"]
+    manifest: CollectionBundleManifest
+    files: dict[str, Any] = Field(default_factory=dict)

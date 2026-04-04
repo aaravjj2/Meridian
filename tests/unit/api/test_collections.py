@@ -278,3 +278,51 @@ def test_collection_reopen_timeline_session_matches_workspace_lookup() -> None:
         json={"session_id": "rs-missing-session"},
     )
     assert missing_session_add.status_code == 404
+
+
+def test_collection_bundle_export_v2_sections_and_manifest() -> None:
+    saved_a = _save_session(
+        question="Collection bundle baseline macro thesis.",
+        session_id="wave14-coll-bundle-thread-a",
+    )
+    saved_b = _save_session(
+        question="Collection bundle follow-up event probability thesis.",
+        session_id="wave14-coll-bundle-thread-b",
+    )
+
+    created = client.post("/api/v1/collections", json={"title": "Bundle Notebook"})
+    assert created.status_code == 200
+    collection_id = created.json()["collection"]["id"]
+
+    add_a = client.post(
+        f"/api/v1/collections/{collection_id}/sessions",
+        json={"session_id": saved_a["id"]},
+    )
+    assert add_a.status_code == 200
+    add_b = client.post(
+        f"/api/v1/collections/{collection_id}/sessions",
+        json={"session_id": saved_b["id"]},
+    )
+    assert add_b.status_code == 200
+
+    bundle_response = client.get(f"/api/v1/collections/{collection_id}/bundle")
+    assert bundle_response.status_code == 200
+    payload = bundle_response.json()
+
+    assert payload["bundle_version"] == "wave14-v2"
+    assert payload["bundle_kind"] == "collection"
+    assert payload["manifest"]["schema"] == "meridian.export_bundle.v2"
+    assert payload["manifest"]["collection_id"] == collection_id
+    assert payload["files"]["collection.json"]["id"] == collection_id
+    assert payload["files"]["timeline.json"]["timeline_signature"]
+    assert len(payload["files"]["sessions.json"]) == 2
+    assert payload["files"]["sessions.json"][0]["canonical_signature"]
+    assert payload["files"]["compare.json"]["pair_count"] >= 1
+    assert payload["manifest"]["section_signatures"]["report.md"]
+
+    bundle_again = client.get(f"/api/v1/collections/{collection_id}/bundle")
+    assert bundle_again.status_code == 200
+    assert (
+        payload["manifest"]["deterministic_signature"]
+        == bundle_again.json()["manifest"]["deterministic_signature"]
+    )

@@ -331,13 +331,33 @@ Behavior:
 
 ### GET /api/v1/research/sessions/{saved_id}/bundle
 
-Exports a self-contained bundle JSON payload with:
+Exports a self-contained **bundle v2** JSON payload for offline audit replay.
 
-- full saved session record
-- integrity report (recomputed signature + structural checks)
-- evaluation report (deterministic signature + checks)
-- snapshot provenance metadata (`summary`, `sources`, `signature_sha256`)
-- provenance metadata (`source`, `app_version`, `model`, `mode`, `freshness_counts`, `snapshot_kind_counts`, `cache_lineage_counts`, `snapshot_signature`, `evaluation_signature`)
+Top-level fields:
+
+- `bundle_version: "wave14-v2"`
+- `bundle_kind: "session"`
+- `exported_at`
+- `manifest`
+- `files`
+
+`manifest` includes:
+
+- deterministic bundle signature
+- per-section SHA256 signatures and byte inventory
+- integrity/equality checks (session signature parity, integrity recomputation parity, evaluation signature parity, snapshot signature parity)
+- timeline and compare-previous linkage metadata
+
+`files` contains section payloads equivalent to offline artifacts:
+
+- `session.json`
+- `trace.json`
+- `provenance.json`
+- `evaluation.json`
+- `integrity.json`
+- `report.md`
+- `timeline.json`
+- `compare.json`
 
 ### Research Collections (Wave 12)
 
@@ -525,6 +545,26 @@ Validation rules:
 
 - The reordered list must contain exactly the same session ids as current collection contents.
 - Duplicate session ids are rejected.
+
+### GET /api/v1/collections/{collection_id}/bundle
+
+Exports an optional collection bundle v2 payload for offline notebook audits.
+
+Top-level fields:
+
+- `bundle_version: "wave14-v2"`
+- `bundle_kind: "collection"`
+- `manifest`
+- `files`
+
+`files` contains:
+
+- `collection.json`
+- `timeline.json`
+- `sessions.json`
+- `compare.json` (adjacent timeline pair comparisons)
+- `provenance.json`
+- `report.md`
 
 ### GET /api/v1/screener
 

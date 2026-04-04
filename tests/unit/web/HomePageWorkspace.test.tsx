@@ -1079,6 +1079,28 @@ describe('HomePage workspace persistence', () => {
         rebuildTimeline()
         syncListFromDetail()
         return HttpResponse.json(detail)
+      }),
+      http.get('/api/v1/collections/:collectionId/bundle', ({ params }) => {
+        return HttpResponse.json(
+          {
+            bundle_version: 'wave14-v2',
+            bundle_kind: 'collection',
+            manifest: {
+              collection_id: params.collectionId,
+              deterministic_signature: 'bundle-collection-signature',
+            },
+            files: {
+              collection_json: {
+                id: params.collectionId,
+              },
+            },
+          },
+          {
+            headers: {
+              'content-disposition': `attachment; filename=${String(params.collectionId)}.bundle.json`,
+            },
+          }
+        )
       })
     )
 
@@ -1128,6 +1150,11 @@ describe('HomePage workspace persistence', () => {
     expect(await screen.findByTestId('brief-complete')).toBeInTheDocument()
     expect(await screen.findByTestId('workspace-thread-signature')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-thread-timeline-item-0')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-collection-export-bundle'))
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-status')).toHaveTextContent('Exported collection')
+    })
 
     fireEvent.click(screen.getByTestId('workspace-collection-remove-0'))
     await waitFor(() => {

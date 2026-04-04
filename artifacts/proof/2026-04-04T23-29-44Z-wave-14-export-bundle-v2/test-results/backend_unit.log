@@ -1,0 +1,21 @@
+$ /home/aarav/Aarav/Meridian/.venv/bin/python -m pytest -q --junitxml /home/aarav/Aarav/Meridian/artifacts/harness/2026-04-04T23-28-15Z/pytest-report.xml
+
+--- STDOUT ---
+..........................................................               [100%]
+=============================== warnings summary ===============================
+src/meridian/normalisation/schemas.py:467
+  /home/aarav/Aarav/Meridian/src/meridian/normalisation/schemas.py:467: UserWarning: Field name "schema" in "SessionBundleManifest" shadows an attribute in parent "BaseModel"
+    class SessionBundleManifest(BaseModel):
+
+src/meridian/normalisation/schemas.py:490
+  /home/aarav/Aarav/Meridian/src/meridian/normalisation/schemas.py:490: UserWarning: Field name "schema" in "CollectionBundleManifest" shadows an attribute in parent "BaseModel"
+    class CollectionBundleManifest(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+
+
+--- STDERR ---
+
+
+exit_code=0
+duration_ms=43684

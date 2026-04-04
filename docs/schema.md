@@ -240,15 +240,47 @@ Canonical signature notes:
 - `checked_at: str (ISO)`
 - `provenance: dict[str, Any]`
 
-## SessionBundleExport
+## SessionBundleExportV2
 
-- `bundle_version: str`
+- `bundle_version: "wave14-v2"`
+- `bundle_kind: "session"`
 - `exported_at: str (ISO)`
-- `session: SavedResearchSession`
-- `integrity: SessionIntegrityReport`
-- `evaluation: ResearchEvaluationReport | null`
-- `snapshot_provenance: { summary, sources, signature_sha256 }`
-- `provenance: { source, app_version, model, mode, freshness_counts, snapshot_kind_counts, cache_lineage_counts, snapshot_signature, evaluation_signature }`
+- `manifest: SessionBundleManifest`
+- `files: dict[str, Any]`
+
+Required `files` entries:
+
+- `session.json: SavedResearchSession`
+- `trace.json: list[SavedTraceEvent]`
+- `provenance.json: dict` (snapshot summary, snapshot source projection, signatures)
+- `evaluation.json: ResearchEvaluationReport | { available: false }`
+- `integrity.json: SessionIntegrityReport`
+- `report.md: str` (markdown export payload)
+- `timeline.json: ResearchThreadTimelineDetail`
+- `compare.json: { available, left_id, right_id, comparison }`
+
+`manifest` includes deterministic signatures and equality checks:
+
+- `deterministic_signature`
+- `section_signatures` (per-file SHA256)
+- `inventory` (file media type + byte size + SHA256)
+- `equality_checks` (session/integrity/evaluation/snapshot parity)
+
+## CollectionBundleExportV2
+
+- `bundle_version: "wave14-v2"`
+- `bundle_kind: "collection"`
+- `manifest: CollectionBundleManifest`
+- `files: dict[str, Any]`
+
+Required `files` entries:
+
+- `collection.json: ResearchCollection`
+- `timeline.json: { collection_id, timeline_signature, missing_session_count, timeline[] }`
+- `sessions.json: list[session digest rows]`
+- `compare.json: { pair_count, pairs[] }`
+- `provenance.json: dict`
+- `report.md: str`
 
 ## ResearchCollection
 

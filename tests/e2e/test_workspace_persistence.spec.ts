@@ -47,6 +47,8 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await expect(page.getByTestId('workspace-thread-signature')).toBeVisible()
   await expect(page.getByTestId('workspace-thread-timeline-item-0')).toBeVisible()
   await expect(page.getByTestId('workspace-thread-delta-0')).toBeVisible()
+  await page.getByTestId('workspace-collection-export-bundle').click()
+  await expect(page.getByTestId('workspace-status')).toContainText('Exported collection', { timeout: 10000 })
   await page.getByTestId('workspace-thread-reopen-0').click()
   await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 10000 })
   await expect(page.getByTestId('trace-step-0')).toBeVisible()

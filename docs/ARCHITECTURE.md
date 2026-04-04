@@ -348,7 +348,8 @@ Phase 5 and Phase 6 add management/audit layers over these records:
 - snapshot-level provenance summaries with checksum coverage and lineage counts
 - snapshot drift analysis in compare payloads (snapshot ids, freshness deltas, source-set deltas, evaluation signature drift)
 - deterministic evaluation checks with stable signatures for reproducibility
-- self-contained bundle export (`/research/sessions/{id}/bundle`) including integrity + evaluation + snapshot provenance payloads
+- self-contained session bundle v2 export (`/research/sessions/{id}/bundle`) with manifest/inventory signatures and offline file-equivalent sections (`session.json`, `trace.json`, `provenance.json`, `evaluation.json`, `integrity.json`, `report.md`, `timeline.json`, `compare.json`)
+- optional collection bundle v2 export (`/collections/{id}/bundle`) with collection/timeline/session digest/compare provenance sections for offline notebook audits
 
 Canonical signatures are computed from analytical content (question, brief, trace, evidence state) and intentionally exclude mutable management metadata (`label`, archive state, timestamps).
 

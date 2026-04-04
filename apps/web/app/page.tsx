@@ -601,6 +601,14 @@ async function exportSavedBundle(savedId: string): Promise<Response> {
   return response
 }
 
+async function exportCollectionBundle(collectionId: string): Promise<Response> {
+  const response = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/bundle`)
+  if (!response.ok) {
+    throw new Error(`Failed to export collection bundle: ${response.status}`)
+  }
+  return response
+}
+
 function triggerDownload(response: Response, content: Blob): void {
   if (typeof document === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
     return
@@ -1059,6 +1067,25 @@ export default function HomePage() {
     await exportBundleById(exportTarget)
   }, [activeSavedSessionId, exportBundleById, saveCurrentSession])
 
+  const exportActiveCollectionBundle = useCallback(async () => {
+    if (!activeCollection) {
+      setWorkspaceStatus('Select a collection before exporting bundle.')
+      return
+    }
+
+    setExportBusy(true)
+    try {
+      const response = await exportCollectionBundle(activeCollection.id)
+      const blob = await response.blob()
+      triggerDownload(response, blob)
+      setWorkspaceStatus(`Exported collection ${activeCollection.id} as bundle`)
+    } catch (exportError) {
+      setWorkspaceStatus(exportError instanceof Error ? exportError.message : 'Collection bundle export failed')
+    } finally {
+      setExportBusy(false)
+    }
+  }, [activeCollection])
+
   const renameSessionById = useCallback(
     async (savedId: string, nextLabel: string | null) => {
       setMutationBusy(true)
@@ -1323,6 +1350,9 @@ export default function HomePage() {
               }}
               onCollectionAddActiveSession={() => {
                 void addActiveSessionToCurrentCollection()
+              }}
+              onCollectionExportBundle={() => {
+                void exportActiveCollectionBundle()
               }}
               onCollectionRemoveSession={(sessionIdToRemove) => {
                 void removeSessionFromCurrentCollection(sessionIdToRemove)

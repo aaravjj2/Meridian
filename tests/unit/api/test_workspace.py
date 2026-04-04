@@ -158,8 +158,8 @@ def test_workspace_saved_session_signature_is_deterministic_for_demo_runs() -> N
     assert bundle_a.status_code == 200
     assert bundle_b.status_code == 200
     assert (
-        bundle_a.json()["snapshot_provenance"]["signature_sha256"]
-        == bundle_b.json()["snapshot_provenance"]["signature_sha256"]
+        bundle_a.json()["files"]["provenance.json"]["snapshot_signature"]
+        == bundle_b.json()["files"]["provenance.json"]["snapshot_signature"]
     )
 
     compare_a = client.get(
@@ -422,12 +422,18 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
     assert bundle_response.status_code == 200
     assert "application/json" in bundle_response.headers["content-type"]
     bundle_payload = bundle_response.json()
-    assert bundle_payload["bundle_version"] == "phase-7"
-    assert bundle_payload["session"]["id"] == first_id
-    assert bundle_payload["integrity"]["signature_valid"] is True
-    assert bundle_payload["evaluation"]["version"] == "phase-7"
-    assert bundle_payload["snapshot_provenance"]["summary"]["snapshot_count"] >= 1
-    assert bundle_payload["snapshot_provenance"]["signature_sha256"]
+    assert bundle_payload["bundle_version"] == "wave14-v2"
+    assert bundle_payload["bundle_kind"] == "session"
+    assert bundle_payload["manifest"]["schema"] == "meridian.export_bundle.v2"
+    assert bundle_payload["manifest"]["saved_id"] == first_id
+    assert bundle_payload["files"]["session.json"]["id"] == first_id
+    assert bundle_payload["files"]["integrity.json"]["signature_valid"] is True
+    assert bundle_payload["files"]["evaluation.json"]["version"] == "phase-7"
+    assert bundle_payload["files"]["provenance.json"]["snapshot_summary"]["snapshot_count"] >= 1
+    assert bundle_payload["files"]["provenance.json"]["snapshot_signature"]
+    assert bundle_payload["files"]["timeline.json"]["timeline_signature"]
+    assert bundle_payload["manifest"]["section_signatures"]["report.md"]
+    assert bundle_payload["manifest"]["equality_checks"]["session_matches_integrity_signature"] is True
 
     deleted = client.delete(f"/api/v1/research/sessions/{first_id}")
     assert deleted.status_code == 200

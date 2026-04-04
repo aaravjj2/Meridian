@@ -19,6 +19,7 @@ from meridian.normalisation.schemas import (
     ResearchThesisDelta,
     ResearchThesisStateSnapshot,
     ResearchThreadTimelineDetail,
+    SessionBundleExportV2,
     SnapshotProvenance,
     SourceProvenance,
 )
@@ -362,6 +363,13 @@ class ResearchSessionStore:
     def _hash_canonical_payload(self, canonical_payload: dict[str, Any]) -> str:
         encoded = json.dumps(canonical_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
+
+    def _hash_value_payload(self, payload: Any) -> str:
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _json_file_size(self, payload: Any) -> int:
+        return len((json.dumps(payload, indent=2) + "\n").encode("utf-8"))
 
     def _compute_signature(self, payload: SaveResearchSessionRequest) -> str:
         canonical_payload = self._canonical_payload(
@@ -2020,51 +2028,169 @@ class ResearchSessionStore:
 
     def export_bundle_payload(self, record: SavedResearchSession) -> dict[str, Any]:
         integrity = self.build_integrity_report(record)
-        freshness_counts = (
-            record.brief.provenance_summary.get("freshness_counts")
-            if isinstance(record.brief.provenance_summary, dict)
-            else None
+        exported_at = _iso_now()
+        snapshot_signature = self._snapshot_signature(record.brief)
+        snapshot_projection = self._snapshot_projection(record.brief)
+
+        provenance_summary = (
+            record.brief.provenance_summary if isinstance(record.brief.provenance_summary, dict) else {}
         )
         snapshot_summary = (
-            record.brief.snapshot_summary
-            if isinstance(record.brief.snapshot_summary, dict)
-            else None
+            record.brief.snapshot_summary if isinstance(record.brief.snapshot_summary, dict) else {}
         )
-        snapshot_projection = self._snapshot_projection(record.brief)
-        snapshot_signature = self._snapshot_signature(record.brief)
-        return {
-            "bundle_version": "phase-7",
-            "exported_at": _iso_now(),
-            "session": record.model_dump(),
-            "integrity": integrity.model_dump(),
-            "evaluation": record.evaluation.model_dump() if record.evaluation else None,
-            "snapshot_provenance": {
-                "summary": snapshot_summary,
-                "sources": snapshot_projection,
-                "signature_sha256": snapshot_signature,
+
+        thread_records = [item for item in self._all_records() if item.session_id == record.session_id]
+        thread_records.sort(key=lambda item: (item.saved_at, item.id))
+        previous_saved_id: str | None = None
+        for idx, item in enumerate(thread_records):
+            if item.id != record.id:
+                continue
+            if idx > 0:
+                previous_saved_id = thread_records[idx - 1].id
+            break
+
+        timeline_payload = self.build_thread_timeline(
+            session_id=record.session_id,
+            include_archived=True,
+        ).model_dump(exclude_none=True)
+
+        compare_payload: dict[str, Any]
+        if previous_saved_id:
+            comparison = self.compare(left_id=previous_saved_id, right_id=record.id)
+            compare_payload = {
+                "available": comparison is not None,
+                "left_id": previous_saved_id,
+                "right_id": record.id,
+                "comparison": comparison.model_dump(exclude_none=True) if comparison else None,
+            }
+        else:
+            compare_payload = {
+                "available": False,
+                "left_id": None,
+                "right_id": record.id,
+                "comparison": None,
+            }
+
+        session_payload = record.model_dump(exclude_none=True)
+        trace_payload = [event.model_dump(exclude_none=True) for event in record.trace_events]
+        provenance_payload = {
+            "source": "meridian-workspace",
+            "app_version": "0.1.0",
+            "model": "glm-5.1",
+            "mode": record.mode,
+            "session_reference": {
+                "saved_id": record.id,
+                "thread_session_id": record.session_id,
+                "query_class": record.query_class,
+                "follow_up_context": record.follow_up_context,
             },
-            "provenance": {
-                "source": "meridian-workspace",
-                "app_version": "0.1.0",
-                "model": "glm-5.1",
-                "mode": record.mode,
-                "freshness_counts": freshness_counts,
-                "snapshot_kind_counts": (
-                    snapshot_summary.get("snapshot_kind_counts")
-                    if isinstance(snapshot_summary, dict)
-                    else None
-                ),
-                "cache_lineage_counts": (
-                    snapshot_summary.get("cache_lineage_counts")
-                    if isinstance(snapshot_summary, dict)
-                    else None
-                ),
-                "snapshot_signature": snapshot_signature,
-                "evaluation_signature": (
-                    record.evaluation.deterministic_signature if record.evaluation else None
-                ),
-            },
+            "captured_at": provenance_summary.get("captured_at"),
+            "freshness_counts": provenance_summary.get("freshness_counts"),
+            "snapshot_summary": snapshot_summary,
+            "snapshot_sources": snapshot_projection,
+            "snapshot_signature": snapshot_signature,
+            "canonical_signature": record.canonical_signature,
+            "evaluation_signature": (
+                record.evaluation.deterministic_signature if record.evaluation else None
+            ),
         }
+        evaluation_payload: dict[str, Any] = (
+            record.evaluation.model_dump(exclude_none=True)
+            if record.evaluation
+            else {"available": False}
+        )
+        integrity_payload = integrity.model_dump(exclude_none=True)
+        report_payload = self.export_markdown(record)
+
+        files: dict[str, Any] = {
+            "session.json": session_payload,
+            "trace.json": trace_payload,
+            "provenance.json": provenance_payload,
+            "evaluation.json": evaluation_payload,
+            "integrity.json": integrity_payload,
+            "timeline.json": timeline_payload,
+            "compare.json": compare_payload,
+            "report.md": report_payload,
+        }
+
+        inventory: list[dict[str, Any]] = []
+        section_signatures: dict[str, str] = {}
+        for filename, payload in files.items():
+            if filename.endswith(".md"):
+                encoded = payload.encode("utf-8")
+                signature = hashlib.sha256(encoded).hexdigest()
+                size_bytes = len(encoded)
+                media_type = "text/markdown; charset=utf-8"
+            else:
+                signature = self._hash_value_payload(payload)
+                size_bytes = self._json_file_size(payload)
+                media_type = "application/json"
+
+            section_signatures[filename] = signature
+            inventory.append(
+                {
+                    "file": filename,
+                    "media_type": media_type,
+                    "sha256": signature,
+                    "size_bytes": size_bytes,
+                }
+            )
+
+        equality_checks = {
+            "session_matches_integrity_signature": (
+                session_payload.get("canonical_signature") == integrity_payload.get("canonical_signature")
+            ),
+            "integrity_recomputed_matches_record": (
+                integrity_payload.get("canonical_signature")
+                == integrity_payload.get("recomputed_signature")
+            ),
+            "evaluation_signature_matches_integrity": (
+                evaluation_payload.get("deterministic_signature") == integrity_payload.get("evaluation_signature")
+                if evaluation_payload.get("available", True)
+                else integrity_payload.get("evaluation_signature") is None
+            ),
+            "snapshot_signature_matches_integrity": (
+                provenance_payload.get("snapshot_signature")
+                == integrity_payload.get("bundle_snapshot_signature")
+            ),
+            "timeline_signature_present": bool(timeline_payload.get("timeline_signature")),
+            "compare_previous_available": bool(compare_payload.get("available")),
+        }
+
+        deterministic_signature = self._hash_value_payload(
+            {
+                "bundle_version": "wave14-v2",
+                "files": section_signatures,
+                "equality": equality_checks,
+                "saved_id": record.id,
+            }
+        )
+
+        manifest = {
+            "schema": "meridian.export_bundle.v2",
+            "bundle_kind": "session",
+            "generated_at": exported_at,
+            "saved_id": record.id,
+            "thread_session_id": record.session_id,
+            "query_class": record.query_class,
+            "timeline_signature": timeline_payload.get("timeline_signature"),
+            "compare_previous_saved_id": previous_saved_id,
+            "deterministic_signature": deterministic_signature,
+            "equality_checks": equality_checks,
+            "section_signatures": section_signatures,
+            "inventory": inventory,
+        }
+
+        bundle = SessionBundleExportV2.model_validate(
+            {
+            "bundle_version": "wave14-v2",
+            "bundle_kind": "session",
+            "exported_at": exported_at,
+            "manifest": manifest,
+            "files": files,
+            }
+        )
+        return bundle.model_dump(exclude_none=True)
 
     def export_markdown(self, record: SavedResearchSession) -> str:
         trace_summary = {
