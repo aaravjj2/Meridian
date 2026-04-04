@@ -229,7 +229,7 @@ Meridian demonstrates GLM-5.1's capabilities across real-world scenarios:
 4. **Regime Detection**: "What's the current macro regime across 5 dimensions?"
 5. **Screener Alerts**: "Show top 10 market-vs-model probability gaps"
 
-## Workspace Session Management (Phase 8)
+## Workspace Session Management (Phase 9)
 
 Meridian supports a single-user research workspace directly in the terminal flow with deterministic local persistence and audit tooling:
 
@@ -238,6 +238,7 @@ Meridian supports a single-user research workspace directly in the terminal flow
 - Rename session labels, archive/unarchive sessions, and delete stale records
 - Compare any two saved sessions with structured metadata/claim/source/trace diffs
 - Compare snapshot drift between saved sessions (snapshot ids, freshness shifts, source-set deltas, evaluation signature drift)
+- Recapture any saved session into a new saved record with explicit before/after snapshot lineage and deterministic demo pseudo-refresh behavior
 - Surface source-level provenance and freshness in live research output and saved sessions
 - Distinguish fixture, cache, live-capture, and derived snapshot states with cache-lineage labels
 - Expose snapshot summary metadata (kind counts, lineage counts, checksum coverage) in terminal/workspace UI

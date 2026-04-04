@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import type {
   ResearchBrief,
   SavedResearchSessionSummary,
+  SessionRecaptureLineage,
   SessionComparison,
   SessionIntegrityReport,
 } from './types'
@@ -19,12 +20,14 @@ type WorkspacePanelProps = {
   saveBusy: boolean
   exportBusy: boolean
   mutationBusy: boolean
+  recaptureBusy: boolean
   comparisonBusy: boolean
   integrityBusy: boolean
   searchValue: string
   includeArchived: boolean
   queryClassFilter: ResearchBrief['query_class'] | 'all'
   comparisonResult: SessionComparison | null
+  recaptureLineage: SessionRecaptureLineage | null
   integrityReport: SessionIntegrityReport | null
   integrityOverview: { count: number; issueCount: number } | null
   statusMessage: string | null
@@ -43,6 +46,7 @@ type WorkspacePanelProps = {
   onRename: (savedId: string, label: string | null) => void
   onArchive: (savedId: string, archived: boolean) => void
   onDelete: (savedId: string) => void
+  onRecapture: (savedId: string) => void
   onCompare: (leftId: string, rightId: string) => void
   onVerifyIntegrity: (savedId: string) => void
   onVerifyWorkspaceIntegrity: () => void
@@ -70,12 +74,14 @@ export default function WorkspacePanel({
   saveBusy,
   exportBusy,
   mutationBusy,
+  recaptureBusy,
   comparisonBusy,
   integrityBusy,
   searchValue,
   includeArchived,
   queryClassFilter,
   comparisonResult,
+  recaptureLineage,
   integrityReport,
   integrityOverview,
   statusMessage,
@@ -94,6 +100,7 @@ export default function WorkspacePanel({
   onRename,
   onArchive,
   onDelete,
+  onRecapture,
   onCompare,
   onVerifyIntegrity,
   onVerifyWorkspaceIntegrity,
@@ -302,6 +309,41 @@ export default function WorkspacePanel({
         ) : null}
       </div>
 
+      {recaptureLineage ? (
+        <div className="workspace-recapture" data-testid="workspace-recapture-panel">
+          <span className="block-label">RECAPTURE LINEAGE</span>
+          <div className="workspace-recapture-result" data-testid="workspace-recapture-lineage">
+            <p data-testid="workspace-recapture-source">Source session: {recaptureLineage.source_session_id}</p>
+            <p data-testid="workspace-recapture-target">Recaptured session: {recaptureLineage.recaptured_session_id}</p>
+            <p data-testid="workspace-recapture-mode">Mode: {recaptureLineage.recapture_mode}</p>
+            <p data-testid="workspace-recapture-before-signature">
+              Before snapshot signature: {recaptureLineage.before_snapshot_signature}
+            </p>
+            <p data-testid="workspace-recapture-after-signature">
+              After snapshot signature: {recaptureLineage.after_snapshot_signature}
+            </p>
+            <p data-testid="workspace-recapture-snapshot-id-changes">
+              Snapshot id changes: {recaptureLineage.snapshot_id_changes}
+            </p>
+            <p data-testid="workspace-recapture-source-set-changes">
+              Source set changes: {recaptureLineage.source_set_changes}
+            </p>
+            {recaptureLineage.transitions.length > 0 ? (
+              <ul className="workspace-recapture-transitions" data-testid="workspace-recapture-transition-list">
+                {recaptureLineage.transitions.slice(0, 4).map((transition, idx) => (
+                  <li key={`${transition.source_ref}-${idx}`} data-testid={`workspace-recapture-transition-${idx}`}>
+                    {transition.source_ref}: {transition.before_snapshot_id ?? 'none'} {'->'}{' '}
+                    {transition.after_snapshot_id ?? 'none'}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p data-testid="workspace-recapture-transition-none">No snapshot id transitions.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <div className="workspace-integrity" data-testid="workspace-integrity-panel">
         <span className="block-label">INTEGRITY</span>
         {integrityOverview ? (
@@ -422,6 +464,14 @@ export default function WorkspacePanel({
                 <div className="workspace-item-actions">
                   <button type="button" data-testid={`workspace-reopen-${idx}`} onClick={() => onReopen(session.id)}>
                     Reopen
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`workspace-recapture-${idx}`}
+                    onClick={() => onRecapture(session.id)}
+                    disabled={recaptureBusy}
+                  >
+                    {recaptureBusy ? 'Recapturing...' : 'Recapture'}
                   </button>
                   <button
                     type="button"

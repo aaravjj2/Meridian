@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
@@ -222,6 +222,32 @@ class SessionComparison(BaseModel):
     summary: dict[str, Any] = Field(default_factory=dict)
 
 
+class RecaptureSnapshotTransition(BaseModel):
+    source_ref: str
+    before_snapshot_id: str | None = None
+    after_snapshot_id: str | None = None
+    before_cache_lineage: str | None = None
+    after_cache_lineage: str | None = None
+
+
+class SessionRecaptureLineage(BaseModel):
+    source_session_id: str
+    recaptured_session_id: str
+    recapture_mode: Literal["demo_pseudo_refresh", "live_refresh"]
+    before_snapshot_signature: str
+    after_snapshot_signature: str
+    snapshot_id_changes: int
+    source_set_changes: int
+    transition_count: int
+    transitions: list[RecaptureSnapshotTransition] = Field(default_factory=list)
+    generated_at: str
+
+
+class SessionRecaptureResult(BaseModel):
+    saved: SavedResearchSession
+    lineage: SessionRecaptureLineage
+
+
 class SessionIntegrityReport(BaseModel):
     id: str
     signature_valid: bool
@@ -414,6 +440,7 @@ class ResearchSessionStore:
             index[source_ref] = {
                 "snapshot_id": snapshot.snapshot_id if snapshot else None,
                 "snapshot_kind": snapshot.snapshot_kind if snapshot else None,
+                "cache_lineage": provenance.cache_lineage if provenance else "unknown",
                 "freshness": provenance.freshness if provenance else "unknown",
                 "freshness_hours": provenance.freshness_hours if provenance else None,
             }
@@ -427,6 +454,12 @@ class ResearchSessionStore:
 
         age_hours = max(0.0, (captured_dt - observed_dt).total_seconds() / 3600)
         return _freshness_from_hours(age_hours), round(age_hours, 2)
+
+    def _advance_iso(self, value: str | None, *, fallback: str | None = None, hours: int = 24) -> str | None:
+        parsed = _parse_iso(value) or _parse_iso(fallback)
+        if parsed is None:
+            return None
+        return (parsed + timedelta(hours=hours)).isoformat().replace("+00:00", "Z")
 
     def _enrich_brief_provenance(self, brief: ResearchBrief, mode: Literal["demo", "live"]) -> ResearchBrief:
         enriched = brief.model_copy(deep=True)
@@ -933,6 +966,143 @@ class ResearchSessionStore:
         record = self._build_record(saved_id=saved_id, payload=payload, timestamp=timestamp)
         self._write_record(record)
         return record
+
+    def recapture(self, saved_id: str) -> SessionRecaptureResult | None:
+        record = self.get(saved_id)
+        if record is None:
+            return None
+
+        recaptured_brief = record.brief.model_copy(deep=True)
+        recapture_mode: Literal["demo_pseudo_refresh", "live_refresh"] = (
+            "demo_pseudo_refresh" if record.mode == "demo" else "live_refresh"
+        )
+        before_snapshot_signature = self._snapshot_signature(record.brief)
+        before_index = self._source_snapshot_index(record.brief)
+
+        refreshed_created_at = self._advance_iso(record.brief.created_at, fallback=_iso_now()) or _iso_now()
+        recaptured_brief.created_at = refreshed_created_at
+
+        transition_candidates: list[RecaptureSnapshotTransition] = []
+        for source in recaptured_brief.sources:
+            if source.provenance is None or source.provenance.snapshot is None:
+                continue
+
+            snapshot = source.provenance.snapshot
+            source_ref = source.provenance.source_ref
+            before_snapshot_id = snapshot.snapshot_id
+            before_cache_lineage = source.provenance.cache_lineage
+
+            refreshed_checksum = self._hash_canonical_payload(
+                {
+                    "source_ref": source_ref,
+                    "before_snapshot_id": before_snapshot_id,
+                    "before_checksum": snapshot.checksum_sha256,
+                    "recapture_mode": recapture_mode,
+                    "refresh_profile": "wave9-recapture-v1",
+                }
+            )
+            snapshot.snapshot_id = f"snap-{refreshed_checksum[:12]}"
+            snapshot.checksum_sha256 = refreshed_checksum
+
+            if record.mode == "demo":
+                snapshot.snapshot_kind = "derived"
+                source.provenance.cache_lineage = "derived"
+                base_dataset_version = str(snapshot.dataset_version or "demo-fixture-v1")
+                snapshot.dataset_version = (
+                    base_dataset_version
+                    if base_dataset_version.endswith("-recapture-v1")
+                    else f"{base_dataset_version}-recapture-v1"
+                )
+
+            snapshot.generated_at = self._advance_iso(snapshot.generated_at, fallback=record.brief.created_at)
+            snapshot.cached_at = self._advance_iso(snapshot.cached_at, fallback=record.brief.created_at)
+            snapshot.fetched_at = self._advance_iso(snapshot.fetched_at, fallback=record.brief.created_at)
+            source.provenance.observed_at = self._advance_iso(
+                source.provenance.observed_at,
+                fallback=record.brief.created_at,
+            )
+            source.provenance.captured_at = self._advance_iso(
+                source.provenance.captured_at,
+                fallback=record.brief.created_at,
+            ) or source.provenance.captured_at
+
+            transition_candidates.append(
+                RecaptureSnapshotTransition(
+                    source_ref=source_ref,
+                    before_snapshot_id=before_snapshot_id,
+                    after_snapshot_id=snapshot.snapshot_id,
+                    before_cache_lineage=before_cache_lineage,
+                    after_cache_lineage=source.provenance.cache_lineage,
+                )
+            )
+
+        recaptured_trace_events = [event.model_copy(deep=True) for event in record.trace_events]
+        next_step = recaptured_trace_events[-1].step + 1 if recaptured_trace_events else 0
+        recaptured_trace_events.append(
+            SavedTraceEvent(
+                type="reasoning",
+                step=next_step,
+                ts=refreshed_created_at,
+                text=(
+                    f"Recaptured session {saved_id} using {recapture_mode}; "
+                    "snapshot lineage refreshed without overwriting prior work."
+                ),
+            )
+        )
+        recaptured_trace_events.append(
+            SavedTraceEvent(
+                type="complete",
+                step=next_step + 1,
+                ts=refreshed_created_at,
+                followup=True,
+                session_id=record.session_id,
+            )
+        )
+
+        next_label = ((record.label or record.question) + " [recapture]").strip()
+        if len(next_label) > 120:
+            next_label = next_label[:120]
+
+        recaptured_record = self.save(
+            SaveResearchSessionRequest(
+                question=record.question,
+                mode=record.mode,
+                session_id=record.session_id,
+                label=next_label,
+                brief=recaptured_brief,
+                trace_events=recaptured_trace_events,
+                evidence_state=record.evidence_state.model_copy(deep=True) if record.evidence_state else None,
+                evaluation=record.evaluation.model_copy(deep=True) if record.evaluation else None,
+            )
+        )
+
+        after_snapshot_signature = self._snapshot_signature(recaptured_record.brief)
+        after_index = self._source_snapshot_index(recaptured_record.brief)
+        common_source_refs = sorted(set(before_index) & set(after_index))
+        transition_lookup = {item.source_ref: item for item in transition_candidates}
+        changed_transitions = [
+            transition_lookup[source_ref]
+            for source_ref in common_source_refs
+            if before_index[source_ref]["snapshot_id"] != after_index[source_ref]["snapshot_id"]
+            and source_ref in transition_lookup
+        ]
+        source_set_changes = len(set(before_index) ^ set(after_index))
+
+        return SessionRecaptureResult(
+            saved=recaptured_record,
+            lineage=SessionRecaptureLineage(
+                source_session_id=record.id,
+                recaptured_session_id=recaptured_record.id,
+                recapture_mode=recapture_mode,
+                before_snapshot_signature=before_snapshot_signature,
+                after_snapshot_signature=after_snapshot_signature,
+                snapshot_id_changes=len(changed_transitions),
+                source_set_changes=source_set_changes,
+                transition_count=len(changed_transitions),
+                transitions=changed_transitions,
+                generated_at=_iso_now(),
+            ),
+        )
 
     def list_sessions(
         self,

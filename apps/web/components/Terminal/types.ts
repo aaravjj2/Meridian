@@ -155,6 +155,30 @@ export type SavedResearchSession = SavedResearchSessionSummary & {
   updated_at: string
 }
 
+export type SessionRecaptureLineage = {
+  source_session_id: string
+  recaptured_session_id: string
+  recapture_mode: 'demo_pseudo_refresh' | 'live_refresh'
+  before_snapshot_signature: string
+  after_snapshot_signature: string
+  snapshot_id_changes: number
+  source_set_changes: number
+  transition_count: number
+  transitions: Array<{
+    source_ref: string
+    before_snapshot_id?: string | null
+    after_snapshot_id?: string | null
+    before_cache_lineage?: string | null
+    after_cache_lineage?: string | null
+  }>
+  generated_at: string
+}
+
+export type SessionRecaptureResult = {
+  saved: SavedResearchSession
+  lineage: SessionRecaptureLineage
+}
+
 export type SessionComparison = {
   left_id: string
   right_id: string

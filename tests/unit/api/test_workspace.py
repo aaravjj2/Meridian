@@ -177,6 +177,21 @@ def test_workspace_saved_session_signature_is_deterministic_for_demo_runs() -> N
     assert drift_a["snapshot_ids_changed"] == []
     assert drift_a["freshness_changed"] == []
 
+    recapture_first = client.post(f"/api/v1/research/sessions/{saved_a.json()['id']}/recapture")
+    recapture_second = client.post(f"/api/v1/research/sessions/{saved_a.json()['id']}/recapture")
+    assert recapture_first.status_code == 200
+    assert recapture_second.status_code == 200
+
+    recapture_one = recapture_first.json()
+    recapture_two = recapture_second.json()
+    assert recapture_one["saved"]["id"] != saved_a.json()["id"]
+    assert recapture_one["saved"]["id"] != recapture_two["saved"]["id"]
+    assert recapture_one["lineage"]["source_session_id"] == saved_a.json()["id"]
+    assert recapture_one["lineage"]["recapture_mode"] == "demo_pseudo_refresh"
+    assert recapture_one["lineage"]["snapshot_id_changes"] >= 1
+    assert recapture_one["lineage"]["before_snapshot_signature"] == recapture_two["lineage"]["before_snapshot_signature"]
+    assert recapture_one["lineage"]["after_snapshot_signature"] == recapture_two["lineage"]["after_snapshot_signature"]
+
 
 def test_workspace_continue_from_saved_restores_followup_context() -> None:
     initial_question = "Give me a macro outlook for the next two quarters."
@@ -292,6 +307,15 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
     assert isinstance(comparison_payload["snapshot_drift"]["source_set_changed"], bool)
     assert isinstance(comparison_payload["snapshot_drift"]["evaluation_signature_changed"], bool)
 
+    recaptured = client.post(f"/api/v1/research/sessions/{first_id}/recapture")
+    assert recaptured.status_code == 200
+    recapture_payload = recaptured.json()
+    assert recapture_payload["saved"]["id"] != first_id
+    assert recapture_payload["lineage"]["source_session_id"] == first_id
+    assert recapture_payload["lineage"]["recaptured_session_id"] == recapture_payload["saved"]["id"]
+    assert recapture_payload["lineage"]["snapshot_id_changes"] >= 1
+    assert recapture_payload["lineage"]["transition_count"] >= 1
+
     integrity_single = client.get(f"/api/v1/research/sessions/{first_id}/integrity")
     assert integrity_single.status_code == 200
     integrity_payload = integrity_single.json()
@@ -310,7 +334,7 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
 
     integrity_all = client.get("/api/v1/research/sessions/integrity", params={"include_archived": "true"})
     assert integrity_all.status_code == 200
-    assert integrity_all.json()["count"] == 2
+    assert integrity_all.json()["count"] == 3
     assert integrity_all.json()["issue_count"] == 0
 
     bundle_response = client.get(f"/api/v1/research/sessions/{first_id}/bundle")

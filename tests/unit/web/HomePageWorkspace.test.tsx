@@ -467,6 +467,36 @@ describe('HomePage workspace persistence', () => {
           },
         })
       ),
+      http.post('/api/v1/research/sessions/:savedId/recapture', ({ params }) =>
+        HttpResponse.json({
+          saved: {
+            ...savedRecord,
+            id: 'rs-recapture-003',
+            label: 'Saved label one [recapture]',
+            updated_at: '2026-04-03T10:20:00Z',
+          },
+          lineage: {
+            source_session_id: String(params.savedId),
+            recaptured_session_id: 'rs-recapture-003',
+            recapture_mode: 'demo_pseudo_refresh',
+            before_snapshot_signature: 'snap-sig-abc123',
+            after_snapshot_signature: 'snap-sig-recapture-003',
+            snapshot_id_changes: 3,
+            source_set_changes: 0,
+            transition_count: 3,
+            transitions: [
+              {
+                source_ref: 'fred:T10Y2Y',
+                before_snapshot_id: 'snap-old-001',
+                after_snapshot_id: 'snap-new-001',
+                before_cache_lineage: 'fixture',
+                after_cache_lineage: 'derived',
+              },
+            ],
+            generated_at: '2026-04-03T10:20:00Z',
+          },
+        })
+      ),
       http.get('/api/v1/research/sessions/:savedId/integrity', ({ params }) =>
         HttpResponse.json({
           id: params.savedId,
@@ -575,6 +605,12 @@ describe('HomePage workspace persistence', () => {
     expect(screen.getByTestId('workspace-compare-drift-source-set')).toHaveTextContent('yes')
     expect(screen.getByTestId('workspace-compare-snapshot-id-change-0')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-compare-freshness-change-0')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-recapture-0'))
+    expect(await screen.findByTestId('workspace-recapture-lineage')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-recapture-mode')).toHaveTextContent('demo_pseudo_refresh')
+    expect(screen.getByTestId('workspace-recapture-snapshot-id-changes')).toHaveTextContent('3')
+    expect(screen.getByTestId('workspace-recapture-transition-0')).toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('workspace-verify-0'))
     expect(await screen.findByTestId('workspace-integrity-report')).toBeInTheDocument()

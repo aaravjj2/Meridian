@@ -14,6 +14,8 @@ import type {
   EvidenceNavigationState,
   ResearchEvaluationReport,
   ResearchBrief,
+  SessionRecaptureLineage,
+  SessionRecaptureResult,
   SessionComparison,
   SessionIntegrityReport,
   SavedResearchSession,
@@ -427,6 +429,16 @@ async function compareSavedSessions(leftId: string, rightId: string): Promise<Se
   return (await response.json()) as SessionComparison
 }
 
+async function recaptureSavedSession(savedId: string): Promise<SessionRecaptureResult> {
+  const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}/recapture`, {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to recapture session: ${response.status}`)
+  }
+  return (await response.json()) as SessionRecaptureResult
+}
+
 async function getSavedSessionIntegrity(savedId: string): Promise<SessionIntegrityReport> {
   const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}/integrity`)
   if (!response.ok) {
@@ -511,6 +523,7 @@ export default function HomePage() {
   const [saveBusy, setSaveBusy] = useState(false)
   const [exportBusy, setExportBusy] = useState(false)
   const [mutationBusy, setMutationBusy] = useState(false)
+  const [recaptureBusy, setRecaptureBusy] = useState(false)
   const [comparisonBusy, setComparisonBusy] = useState(false)
   const [integrityBusy, setIntegrityBusy] = useState(false)
   const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null)
@@ -518,6 +531,7 @@ export default function HomePage() {
   const [includeArchived, setIncludeArchived] = useState(false)
   const [queryClassFilter, setQueryClassFilter] = useState<ResearchBrief['query_class'] | 'all'>('all')
   const [comparisonResult, setComparisonResult] = useState<SessionComparison | null>(null)
+  const [recaptureLineage, setRecaptureLineage] = useState<SessionRecaptureLineage | null>(null)
   const [integrityReport, setIntegrityReport] = useState<SessionIntegrityReport | null>(null)
   const [integrityOverview, setIntegrityOverview] = useState<{ count: number; issueCount: number } | null>(null)
   const [evidenceState, setEvidenceState] = useState<EvidenceNavigationState>(EMPTY_EVIDENCE_STATE)
@@ -600,6 +614,7 @@ export default function HomePage() {
         setActiveSavedSessionId(saved.id)
         setSessionId(saved.session_id)
         setComparisonResult(null)
+        setRecaptureLineage(null)
         setIntegrityReport(null)
         setIntegrityOverview(null)
         if (saved.follow_up_context) {
@@ -637,6 +652,7 @@ export default function HomePage() {
       setEvidenceHydrationKey((previous) => previous + 1)
       setActiveSavedSessionId(saved.id)
       setComparisonResult(null)
+      setRecaptureLineage(null)
       setIntegrityReport(null)
       setIntegrityOverview(null)
       setWorkspaceStatus(`Reopened session ${saved.id}`)
@@ -756,6 +772,34 @@ export default function HomePage() {
     [activeSavedSessionId, loadWorkspaceSessions]
   )
 
+  const recaptureSessionById = useCallback(
+    async (savedId: string) => {
+      setRecaptureBusy(true)
+      try {
+        const recaptured = await recaptureSavedSession(savedId)
+        await loadWorkspaceSessions()
+        setActiveSavedSessionId(recaptured.saved.id)
+        setBrief(recaptured.saved.brief)
+        setBriefState('complete')
+        setTraceSteps(recaptured.saved.trace_events)
+        setSessionId(recaptured.saved.session_id)
+        setEvaluation(recaptured.saved.evaluation ?? null)
+        setEvidenceState(recaptured.saved.evidence_state ?? EMPTY_EVIDENCE_STATE)
+        setEvidenceHydrationKey((previous) => previous + 1)
+        setRecaptureLineage(recaptured.lineage)
+        setComparisonResult(null)
+        setIntegrityReport(null)
+        setIntegrityOverview(null)
+        setWorkspaceStatus(`Recaptured ${savedId} -> ${recaptured.saved.id}`)
+      } catch (recaptureError) {
+        setWorkspaceStatus(recaptureError instanceof Error ? recaptureError.message : 'Recapture failed')
+      } finally {
+        setRecaptureBusy(false)
+      }
+    },
+    [loadWorkspaceSessions]
+  )
+
   const compareSessionsById = useCallback(async (leftId: string, rightId: string) => {
     if (!leftId || !rightId) {
       setWorkspaceStatus('Select two sessions before comparing.')
@@ -825,6 +869,7 @@ export default function HomePage() {
     setTraceSteps([])
     setBriefState('loading')
     setActiveSavedSessionId(null)
+    setRecaptureLineage(null)
     setEvidenceState(EMPTY_EVIDENCE_STATE)
     setEvaluation(null)
     setEvidenceHydrationKey((previous) => previous + 1)
@@ -898,12 +943,14 @@ export default function HomePage() {
               saveBusy={saveBusy}
               exportBusy={exportBusy}
               mutationBusy={mutationBusy}
+              recaptureBusy={recaptureBusy}
               comparisonBusy={comparisonBusy}
               integrityBusy={integrityBusy}
               searchValue={workspaceSearch}
               includeArchived={includeArchived}
               queryClassFilter={queryClassFilter}
               comparisonResult={comparisonResult}
+              recaptureLineage={recaptureLineage}
               integrityReport={integrityReport}
               integrityOverview={integrityOverview}
               statusMessage={workspaceStatus}
@@ -945,6 +992,9 @@ export default function HomePage() {
               }}
               onDelete={(savedId) => {
                 void deleteSessionById(savedId)
+              }}
+              onRecapture={(savedId) => {
+                void recaptureSessionById(savedId)
               }}
               onCompare={(leftId, rightId) => {
                 void compareSessionsById(leftId, rightId)

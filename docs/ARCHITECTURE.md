@@ -339,6 +339,7 @@ Phase 5 and Phase 6 add management/audit layers over these records:
 
 - lifecycle controls (`rename`, `archive`, `delete`)
 - structured pairwise comparison (`/research/sessions/compare`)
+- controlled recapture into a new session with before/after lineage (`/research/sessions/{id}/recapture`)
 - integrity and provenance checks (`/research/sessions/{id}/integrity`, `/research/sessions/integrity`)
 - deterministic provenance/freshness enrichment on each source and brief-level summary
 - deterministic snapshot/cache lineage enrichment (`fixture|cache|live_capture|derived`) per source

@@ -70,6 +70,15 @@ async def compare_saved_sessions(
     return comparison.model_dump()
 
 
+@router.post("/research/sessions/{saved_id}/recapture")
+async def recapture_saved_session(saved_id: str) -> dict[str, object]:
+    store = get_session_store()
+    recaptured = store.recapture(saved_id=saved_id)
+    if recaptured is None:
+        raise HTTPException(status_code=404, detail=f"Saved session not found: {saved_id}")
+    return recaptured.model_dump()
+
+
 @router.post("/research/sessions")
 async def save_research_session(payload: SaveResearchSessionRequest) -> dict[str, object]:
     store = get_session_store()

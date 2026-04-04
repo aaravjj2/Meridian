@@ -251,6 +251,28 @@ Wave 8 snapshot drift fields:
 - `snapshot_drift.evaluation_signature_changed`: whether deterministic evaluation signature changed
 - `snapshot_drift.drift_signature`: deterministic hash of the snapshot-drift payload
 
+### POST /api/v1/research/sessions/{saved_id}/recapture
+
+Creates a new saved session by recapturing an existing session against a refreshed snapshot baseline.
+
+Behavior:
+
+- does not overwrite the source saved session
+- returns `saved` (the new session) and `lineage` (before/after snapshot provenance)
+- in demo mode, applies deterministic pseudo-refresh semantics for fixture-backed snapshots
+
+Response lineage fields:
+
+- `source_session_id`
+- `recaptured_session_id`
+- `recapture_mode` (`demo_pseudo_refresh` | `live_refresh`)
+- `before_snapshot_signature`
+- `after_snapshot_signature`
+- `snapshot_id_changes`
+- `source_set_changes`
+- `transition_count`
+- `transitions[]` with `source_ref`, before/after snapshot ids, and before/after cache lineage
+
 ### GET /api/v1/research/sessions/integrity
 
 Runs integrity checks across matching saved sessions.

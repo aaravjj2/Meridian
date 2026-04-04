@@ -314,7 +314,8 @@ a {
 }
 
 .workspace-compare,
-.workspace-integrity {
+.workspace-integrity,
+.workspace-recapture {
   border: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--bg-elevated) 18%, transparent);
   padding: 8px;
@@ -339,7 +340,8 @@ a {
 }
 
 .workspace-compare-result,
-.workspace-integrity-result {
+.workspace-integrity-result,
+.workspace-recapture-result {
   font-size: 11px;
   color: var(--text-secondary);
   font-family: var(--font-mono), monospace;
@@ -348,8 +350,17 @@ a {
 }
 
 .workspace-compare-result p,
-.workspace-integrity-result p {
+.workspace-integrity-result p,
+.workspace-recapture-result p {
   margin: 0;
+}
+
+.workspace-recapture-transitions {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--text-muted);
+  display: grid;
+  gap: 2px;
 }
 
 .workspace-compare-drift {

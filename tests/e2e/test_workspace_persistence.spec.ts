@@ -38,6 +38,13 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await expect(page.getByTestId('workspace-compare-drift-source-set')).toBeVisible()
   await expect(page.getByTestId('workspace-compare-drift-evaluation-signature')).toBeVisible()
 
+  await page.getByTestId('workspace-recapture-0').click()
+  await expect(page.getByTestId('workspace-status')).toContainText('Recaptured', { timeout: 10000 })
+  await expect(page.getByTestId('workspace-recapture-lineage')).toBeVisible()
+  await expect(page.getByTestId('workspace-recapture-before-signature')).toBeVisible()
+  await expect(page.getByTestId('workspace-recapture-after-signature')).toBeVisible()
+  await expect(page.getByTestId('workspace-recapture-snapshot-id-changes')).toBeVisible()
+
   await page.getByTestId('workspace-verify-0').click()
   await expect(page.getByTestId('workspace-integrity-report')).toBeVisible({ timeout: 10000 })
   await expect(page.getByTestId('workspace-integrity-provenance')).toBeVisible()

@@ -161,6 +161,32 @@ Canonical signature notes:
 - `left_freshness_hours: float | null`
 - `right_freshness_hours: float | null`
 
+## RecaptureSnapshotTransition
+
+- `source_ref: str`
+- `before_snapshot_id: str | null`
+- `after_snapshot_id: str | null`
+- `before_cache_lineage: str | null`
+- `after_cache_lineage: str | null`
+
+## SessionRecaptureLineage
+
+- `source_session_id: str`
+- `recaptured_session_id: str`
+- `recapture_mode: "demo_pseudo_refresh" | "live_refresh"`
+- `before_snapshot_signature: str`
+- `after_snapshot_signature: str`
+- `snapshot_id_changes: int`
+- `source_set_changes: int`
+- `transition_count: int`
+- `transitions: list[RecaptureSnapshotTransition]`
+- `generated_at: str (ISO)`
+
+## SessionRecaptureResult
+
+- `saved: SavedResearchSession`
+- `lineage: SessionRecaptureLineage`
+
 ## SessionIntegrityReport
 
 - `id: str`
