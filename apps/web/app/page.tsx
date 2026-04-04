@@ -13,6 +13,8 @@ import WorkspacePanel from '@/components/Terminal/WorkspacePanel'
 import type {
   EvidenceNavigationState,
   ResearchBrief,
+  SessionComparison,
+  SessionIntegrityReport,
   SavedResearchSession,
   SavedResearchSessionSummary,
   TraceEvent,
@@ -22,9 +24,16 @@ type SaveResearchSessionRequest = {
   question: string
   mode: 'demo' | 'live'
   session_id: string
+  label?: string | null
   brief: ResearchBrief
   trace_events: TraceEvent[]
   evidence_state: EvidenceNavigationState | null
+}
+
+type ListSavedSessionsOptions = {
+  search?: string
+  includeArchived?: boolean
+  queryClass?: ResearchBrief['query_class'] | 'all'
 }
 
 const FALLBACK_EVENTS: TraceEvent[] = [
@@ -333,8 +342,19 @@ async function streamResearch(
   }
 }
 
-async function listSavedSessions(): Promise<SavedResearchSessionSummary[]> {
-  const response = await fetch('/api/v1/research/sessions')
+async function listSavedSessions(options?: ListSavedSessionsOptions): Promise<SavedResearchSessionSummary[]> {
+  const params = new URLSearchParams()
+  if (options?.search?.trim()) {
+    params.set('search', options.search.trim())
+  }
+  if (options?.includeArchived) {
+    params.set('include_archived', 'true')
+  }
+  if (options?.queryClass && options.queryClass !== 'all') {
+    params.set('query_class', options.queryClass)
+  }
+  const query = params.toString()
+  const response = await fetch(`/api/v1/research/sessions${query ? `?${query}` : ''}`)
   if (!response.ok) {
     throw new Error(`Failed to list saved sessions: ${response.status}`)
   }
@@ -363,6 +383,73 @@ async function getSavedSession(savedId: string): Promise<SavedResearchSession> {
   return (await response.json()) as SavedResearchSession
 }
 
+async function renameSavedSession(savedId: string, label: string | null): Promise<SavedResearchSession> {
+  const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}/rename`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to rename session: ${response.status}`)
+  }
+  return (await response.json()) as SavedResearchSession
+}
+
+async function archiveSavedSession(savedId: string, archived: boolean): Promise<SavedResearchSession> {
+  const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}/archive`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archived }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to update archive status: ${response.status}`)
+  }
+  return (await response.json()) as SavedResearchSession
+}
+
+async function deleteSavedSession(savedId: string): Promise<void> {
+  const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to delete session: ${response.status}`)
+  }
+}
+
+async function compareSavedSessions(leftId: string, rightId: string): Promise<SessionComparison> {
+  const params = new URLSearchParams({ left_id: leftId, right_id: rightId })
+  const response = await fetch(`/api/v1/research/sessions/compare?${params.toString()}`)
+  if (!response.ok) {
+    throw new Error(`Failed to compare sessions: ${response.status}`)
+  }
+  return (await response.json()) as SessionComparison
+}
+
+async function getSavedSessionIntegrity(savedId: string): Promise<SessionIntegrityReport> {
+  const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}/integrity`)
+  if (!response.ok) {
+    throw new Error(`Failed to verify integrity: ${response.status}`)
+  }
+  return (await response.json()) as SessionIntegrityReport
+}
+
+async function getWorkspaceIntegrity(options?: { search?: string; includeArchived?: boolean }): Promise<SessionIntegrityReport[]> {
+  const params = new URLSearchParams()
+  if (options?.search?.trim()) {
+    params.set('search', options.search.trim())
+  }
+  if (options?.includeArchived !== false) {
+    params.set('include_archived', 'true')
+  }
+  const query = params.toString()
+  const response = await fetch(`/api/v1/research/sessions/integrity${query ? `?${query}` : ''}`)
+  if (!response.ok) {
+    throw new Error(`Failed to verify workspace integrity: ${response.status}`)
+  }
+  const payload = (await response.json()) as { reports?: SessionIntegrityReport[] }
+  return payload.reports ?? []
+}
+
 async function exportSavedSession(savedId: string, format: 'json' | 'markdown'): Promise<Response> {
   const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}/export?format=${format}`)
   if (!response.ok) {
@@ -371,17 +458,12 @@ async function exportSavedSession(savedId: string, format: 'json' | 'markdown'):
   return response
 }
 
-function summaryFromSaved(session: SavedResearchSession): SavedResearchSessionSummary {
-  return {
-    id: session.id,
-    question: session.question,
-    mode: session.mode,
-    session_id: session.session_id,
-    query_class: session.query_class,
-    follow_up_context: session.follow_up_context,
-    saved_at: session.saved_at,
-    canonical_signature: session.canonical_signature,
+async function exportSavedBundle(savedId: string): Promise<Response> {
+  const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}/bundle`)
+  if (!response.ok) {
+    throw new Error(`Failed to export bundle: ${response.status}`)
   }
+  return response
 }
 
 function triggerDownload(response: Response, content: Blob): void {
@@ -426,11 +508,21 @@ export default function HomePage() {
   const [activeSavedSessionId, setActiveSavedSessionId] = useState<string | null>(null)
   const [saveBusy, setSaveBusy] = useState(false)
   const [exportBusy, setExportBusy] = useState(false)
+  const [mutationBusy, setMutationBusy] = useState(false)
+  const [comparisonBusy, setComparisonBusy] = useState(false)
+  const [integrityBusy, setIntegrityBusy] = useState(false)
   const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null)
+  const [workspaceSearch, setWorkspaceSearch] = useState('')
+  const [includeArchived, setIncludeArchived] = useState(false)
+  const [queryClassFilter, setQueryClassFilter] = useState<ResearchBrief['query_class'] | 'all'>('all')
+  const [comparisonResult, setComparisonResult] = useState<SessionComparison | null>(null)
+  const [integrityReport, setIntegrityReport] = useState<SessionIntegrityReport | null>(null)
+  const [integrityOverview, setIntegrityOverview] = useState<{ count: number; issueCount: number } | null>(null)
   const [evidenceState, setEvidenceState] = useState<EvidenceNavigationState>(EMPTY_EVIDENCE_STATE)
   const [evidenceHydrationKey, setEvidenceHydrationKey] = useState(0)
 
   const canSaveCurrent = briefState === 'complete' && !!brief && traceSteps.length > 0 && !running
+  const canExportCurrent = canSaveCurrent || !!activeSavedSessionId
 
   const handleEvidenceStateChange = useCallback((state: EvidenceNavigationState) => {
     setEvidenceState((previous) => {
@@ -456,14 +548,24 @@ export default function HomePage() {
     setHistoryState('loading')
     setHistoryError('')
     try {
-      const sessions = await listSavedSessions()
+      const sessions = await listSavedSessions({
+        search: workspaceSearch,
+        includeArchived,
+        queryClass: queryClassFilter,
+      })
       setSavedSessions(sessions)
+      setActiveSavedSessionId((previous) => {
+        if (!previous) {
+          return previous
+        }
+        return sessions.some((item) => item.id === previous) ? previous : null
+      })
       setHistoryState('ready')
     } catch (loadError) {
       setHistoryState('error')
       setHistoryError(loadError instanceof Error ? loadError.message : 'Failed to load saved sessions')
     }
-  }, [])
+  }, [workspaceSearch, includeArchived, queryClassFilter])
 
   useEffect(() => {
     void loadWorkspaceSessions()
@@ -490,14 +592,12 @@ export default function HomePage() {
         }
 
         const saved = await saveSession(payload)
-        const summary = summaryFromSaved(saved)
-        setSavedSessions((previous) => {
-          const deduped = previous.filter((item) => item.id !== summary.id)
-          return [summary, ...deduped]
-        })
-        setHistoryState('ready')
+        await loadWorkspaceSessions()
         setActiveSavedSessionId(saved.id)
         setSessionId(saved.session_id)
+        setComparisonResult(null)
+        setIntegrityReport(null)
+        setIntegrityOverview(null)
         if (saved.follow_up_context) {
           setFollowUpHint(saved.follow_up_context)
         }
@@ -512,7 +612,7 @@ export default function HomePage() {
         setSaveBusy(false)
       }
     },
-    [brief, canSaveCurrent, evidenceState, lastQuery, sessionId, traceSteps]
+    [brief, canSaveCurrent, evidenceState, lastQuery, loadWorkspaceSessions, sessionId, traceSteps]
   )
 
   const reopenSession = useCallback(async (savedId: string) => {
@@ -531,6 +631,9 @@ export default function HomePage() {
       setEvidenceState(saved.evidence_state ?? EMPTY_EVIDENCE_STATE)
       setEvidenceHydrationKey((previous) => previous + 1)
       setActiveSavedSessionId(saved.id)
+      setComparisonResult(null)
+      setIntegrityReport(null)
+      setIntegrityOverview(null)
       setWorkspaceStatus(`Reopened session ${saved.id}`)
     } catch (reopenError) {
       setWorkspaceStatus(reopenError instanceof Error ? reopenError.message : 'Failed to reopen session')
@@ -566,6 +669,146 @@ export default function HomePage() {
     },
     [activeSavedSessionId, exportSessionById, saveCurrentSession]
   )
+
+  const exportBundleById = useCallback(async (savedId: string) => {
+    setExportBusy(true)
+    try {
+      const response = await exportSavedBundle(savedId)
+      const blob = await response.blob()
+      triggerDownload(response, blob)
+      setWorkspaceStatus(`Exported ${savedId} as bundle`)
+    } catch (exportError) {
+      setWorkspaceStatus(exportError instanceof Error ? exportError.message : 'Bundle export failed')
+    } finally {
+      setExportBusy(false)
+    }
+  }, [])
+
+  const exportCurrentBundle = useCallback(async () => {
+    let exportTarget = activeSavedSessionId
+    if (!exportTarget) {
+      const saved = await saveCurrentSession({ silent: true })
+      if (!saved) {
+        setWorkspaceStatus('Unable to export bundle: no completed session is available.')
+        return
+      }
+      exportTarget = saved.id
+    }
+    await exportBundleById(exportTarget)
+  }, [activeSavedSessionId, exportBundleById, saveCurrentSession])
+
+  const renameSessionById = useCallback(
+    async (savedId: string, nextLabel: string | null) => {
+      setMutationBusy(true)
+      try {
+        const renamed = await renameSavedSession(savedId, nextLabel)
+        await loadWorkspaceSessions()
+        setWorkspaceStatus(`Renamed session ${renamed.id}`)
+      } catch (renameError) {
+        setWorkspaceStatus(renameError instanceof Error ? renameError.message : 'Rename failed')
+      } finally {
+        setMutationBusy(false)
+      }
+    },
+    [loadWorkspaceSessions]
+  )
+
+  const setArchivedById = useCallback(
+    async (savedId: string, archived: boolean) => {
+      setMutationBusy(true)
+      try {
+        const updated = await archiveSavedSession(savedId, archived)
+        await loadWorkspaceSessions()
+        if (!includeArchived && archived && activeSavedSessionId === savedId) {
+          setActiveSavedSessionId(null)
+        }
+        setWorkspaceStatus(archived ? `Archived session ${updated.id}` : `Unarchived session ${updated.id}`)
+      } catch (archiveError) {
+        setWorkspaceStatus(archiveError instanceof Error ? archiveError.message : 'Archive update failed')
+      } finally {
+        setMutationBusy(false)
+      }
+    },
+    [activeSavedSessionId, includeArchived, loadWorkspaceSessions]
+  )
+
+  const deleteSessionById = useCallback(
+    async (savedId: string) => {
+      setMutationBusy(true)
+      try {
+        await deleteSavedSession(savedId)
+        await loadWorkspaceSessions()
+        if (activeSavedSessionId === savedId) {
+          setActiveSavedSessionId(null)
+        }
+        setWorkspaceStatus(`Deleted session ${savedId}`)
+      } catch (deleteError) {
+        setWorkspaceStatus(deleteError instanceof Error ? deleteError.message : 'Delete failed')
+      } finally {
+        setMutationBusy(false)
+      }
+    },
+    [activeSavedSessionId, loadWorkspaceSessions]
+  )
+
+  const compareSessionsById = useCallback(async (leftId: string, rightId: string) => {
+    if (!leftId || !rightId) {
+      setWorkspaceStatus('Select two sessions before comparing.')
+      return
+    }
+    if (leftId === rightId) {
+      setWorkspaceStatus('Select two different sessions to compare.')
+      return
+    }
+
+    setComparisonBusy(true)
+    try {
+      const comparison = await compareSavedSessions(leftId, rightId)
+      setComparisonResult(comparison)
+      setWorkspaceStatus(`Compared ${leftId} vs ${rightId}`)
+    } catch (compareError) {
+      setWorkspaceStatus(compareError instanceof Error ? compareError.message : 'Compare failed')
+    } finally {
+      setComparisonBusy(false)
+    }
+  }, [])
+
+  const verifySessionIntegrityById = useCallback(async (savedId: string) => {
+    setIntegrityBusy(true)
+    try {
+      const report = await getSavedSessionIntegrity(savedId)
+      setIntegrityReport(report)
+      setIntegrityOverview(null)
+      if (report.signature_valid && report.issues.length === 0) {
+        setWorkspaceStatus(`Integrity check passed for ${savedId}`)
+      } else {
+        setWorkspaceStatus(`Integrity issues for ${savedId}: ${report.issues.join('; ') || 'unknown issue'}`)
+      }
+    } catch (integrityError) {
+      setWorkspaceStatus(integrityError instanceof Error ? integrityError.message : 'Integrity check failed')
+    } finally {
+      setIntegrityBusy(false)
+    }
+  }, [])
+
+  const verifyWorkspaceIntegrity = useCallback(async () => {
+    setIntegrityBusy(true)
+    try {
+      const reports = await getWorkspaceIntegrity({ search: workspaceSearch, includeArchived })
+      const issueCount = reports.filter((item) => !item.signature_valid || item.issues.length > 0).length
+      setIntegrityOverview({ count: reports.length, issueCount })
+      setIntegrityReport(null)
+      if (issueCount === 0) {
+        setWorkspaceStatus(`Workspace integrity passed for ${reports.length} sessions`)
+      } else {
+        setWorkspaceStatus(`Workspace integrity found issues in ${issueCount}/${reports.length} sessions`)
+      }
+    } catch (integrityError) {
+      setWorkspaceStatus(integrityError instanceof Error ? integrityError.message : 'Workspace integrity check failed')
+    } finally {
+      setIntegrityBusy(false)
+    }
+  }, [includeArchived, workspaceSearch])
 
   async function runQuery(question: string) {
     const priorQuestion = queryHistory.length > 0 ? queryHistory[queryHistory.length - 1] : null
@@ -643,9 +886,22 @@ export default function HomePage() {
               sessions={savedSessions}
               activeSavedSessionId={activeSavedSessionId}
               canSaveCurrent={canSaveCurrent}
+              canExportCurrent={canExportCurrent}
               saveBusy={saveBusy}
               exportBusy={exportBusy}
+              mutationBusy={mutationBusy}
+              comparisonBusy={comparisonBusy}
+              integrityBusy={integrityBusy}
+              searchValue={workspaceSearch}
+              includeArchived={includeArchived}
+              queryClassFilter={queryClassFilter}
+              comparisonResult={comparisonResult}
+              integrityReport={integrityReport}
+              integrityOverview={integrityOverview}
               statusMessage={workspaceStatus}
+              onSearchChange={setWorkspaceSearch}
+              onToggleIncludeArchived={setIncludeArchived}
+              onQueryClassFilterChange={setQueryClassFilter}
               onRefresh={() => {
                 void loadWorkspaceSessions()
               }}
@@ -658,6 +914,9 @@ export default function HomePage() {
               onExportCurrentMarkdown={() => {
                 void exportCurrentSession('markdown')
               }}
+              onExportCurrentBundle={() => {
+                void exportCurrentBundle()
+              }}
               onReopen={(savedId) => {
                 void reopenSession(savedId)
               }}
@@ -666,6 +925,27 @@ export default function HomePage() {
               }}
               onExportMarkdown={(savedId) => {
                 void exportSessionById(savedId, 'markdown')
+              }}
+              onExportBundle={(savedId) => {
+                void exportBundleById(savedId)
+              }}
+              onRename={(savedId, label) => {
+                void renameSessionById(savedId, label)
+              }}
+              onArchive={(savedId, archived) => {
+                void setArchivedById(savedId, archived)
+              }}
+              onDelete={(savedId) => {
+                void deleteSessionById(savedId)
+              }}
+              onCompare={(leftId, rightId) => {
+                void compareSessionsById(leftId, rightId)
+              }}
+              onVerifyIntegrity={(savedId) => {
+                void verifySessionIntegrityById(savedId)
+              }}
+              onVerifyWorkspaceIntegrity={() => {
+                void verifyWorkspaceIntegrity()
               }}
             />
             <ResearchPanel

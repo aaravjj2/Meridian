@@ -46,6 +46,7 @@ def _save_payload(question: str, session_id: str, events: list[dict], brief: dic
         "question": question,
         "mode": "demo",
         "session_id": session_id,
+        "label": f"label-{session_id}",
         "brief": brief,
         "trace_events": events,
         "evidence_state": {
@@ -167,3 +168,107 @@ def test_workspace_continue_from_saved_restores_followup_context() -> None:
     continued_brief = ResearchBrief.model_validate(continued_complete["brief"])
     assert continued_brief.follow_up_context is not None
     assert initial_question.lower() in continued_brief.follow_up_context.lower()
+
+
+def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
+    first_question = "Assess recession odds over the next six months."
+    second_question = "Update the same thread with an event-probability framing."
+
+    first_events = _collect_events(question=first_question, session_id="phase5-thread-one")
+    second_events = _collect_events(question=second_question, session_id="phase5-thread-two")
+    first_complete = first_events[-1]
+    second_complete = second_events[-1]
+
+    first_saved = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=first_question,
+            session_id="phase5-thread-one",
+            events=first_events,
+            brief=first_complete["brief"],
+        ),
+    )
+    second_saved = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=second_question,
+            session_id="phase5-thread-two",
+            events=second_events,
+            brief=second_complete["brief"],
+        ),
+    )
+    assert first_saved.status_code == 200
+    assert second_saved.status_code == 200
+
+    first_id = first_saved.json()["id"]
+    second_id = second_saved.json()["id"]
+
+    renamed = client.patch(
+        f"/api/v1/research/sessions/{first_id}/rename",
+        json={"label": "phase5-renamed-session"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["label"] == "phase5-renamed-session"
+
+    archived = client.patch(
+        f"/api/v1/research/sessions/{first_id}/archive",
+        json={"archived": True},
+    )
+    assert archived.status_code == 200
+    assert archived.json()["archived"] is True
+    assert archived.json()["archived_at"]
+
+    list_active = client.get("/api/v1/research/sessions")
+    assert list_active.status_code == 200
+    assert list_active.json()["count"] == 1
+    assert list_active.json()["sessions"][0]["id"] == second_id
+
+    list_all = client.get("/api/v1/research/sessions", params={"include_archived": "true"})
+    assert list_all.status_code == 200
+    assert list_all.json()["count"] == 2
+
+    list_search = client.get(
+        "/api/v1/research/sessions",
+        params={"include_archived": "true", "search": "renamed"},
+    )
+    assert list_search.status_code == 200
+    assert list_search.json()["count"] == 1
+    assert list_search.json()["sessions"][0]["id"] == first_id
+
+    compare = client.get(
+        "/api/v1/research/sessions/compare",
+        params={"left_id": first_id, "right_id": second_id},
+    )
+    assert compare.status_code == 200
+    comparison_payload = compare.json()
+    assert comparison_payload["left_id"] == first_id
+    assert comparison_payload["right_id"] == second_id
+    assert "summary" in comparison_payload
+    assert "trace_diffs" in comparison_payload
+
+    integrity_single = client.get(f"/api/v1/research/sessions/{first_id}/integrity")
+    assert integrity_single.status_code == 200
+    integrity_payload = integrity_single.json()
+    assert integrity_payload["id"] == first_id
+    assert integrity_payload["signature_valid"] is True
+    assert integrity_payload["issues"] == []
+
+    integrity_all = client.get("/api/v1/research/sessions/integrity", params={"include_archived": "true"})
+    assert integrity_all.status_code == 200
+    assert integrity_all.json()["count"] == 2
+    assert integrity_all.json()["issue_count"] == 0
+
+    bundle_response = client.get(f"/api/v1/research/sessions/{first_id}/bundle")
+    assert bundle_response.status_code == 200
+    assert "application/json" in bundle_response.headers["content-type"]
+    bundle_payload = bundle_response.json()
+    assert bundle_payload["bundle_version"] == "phase-5"
+    assert bundle_payload["session"]["id"] == first_id
+    assert bundle_payload["integrity"]["signature_valid"] is True
+
+    deleted = client.delete(f"/api/v1/research/sessions/{first_id}")
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] is True
+
+    missing = client.get(f"/api/v1/research/sessions/{first_id}")
+    assert missing.status_code == 404

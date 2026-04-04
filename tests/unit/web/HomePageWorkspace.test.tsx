@@ -79,10 +79,29 @@ const savedSummary = {
   question: 'Saved macro question',
   mode: 'demo',
   session_id: 'sess-saved-thread',
+  label: 'Saved label one',
   query_class: 'macro_outlook',
   follow_up_context: 'Follow-up to prior question: Prior saved question',
+  archived: false,
+  archived_at: null,
   saved_at: '2026-04-03T10:05:00Z',
+  updated_at: '2026-04-03T10:05:00Z',
   canonical_signature: 'abc123',
+} as const
+
+const savedSummaryTwo = {
+  id: 'rs-saved-002',
+  question: 'Second saved macro question',
+  mode: 'demo',
+  session_id: 'sess-saved-thread-2',
+  label: 'Saved label two',
+  query_class: 'event_probability',
+  follow_up_context: null,
+  archived: false,
+  archived_at: null,
+  saved_at: '2026-04-03T10:06:00Z',
+  updated_at: '2026-04-03T10:06:00Z',
+  canonical_signature: 'def456',
 } as const
 
 const savedRecord = {
@@ -112,6 +131,51 @@ const savedRecord = {
   },
   created_at: '2026-04-03T10:00:00Z',
   updated_at: '2026-04-03T10:05:00Z',
+} as const
+
+const savedRecordTwo = {
+  ...savedSummaryTwo,
+  brief: {
+    ...briefFixture,
+    question: 'Second saved macro question',
+    query_class: 'event_probability',
+    thesis: 'Second saved thesis',
+    follow_up_context: null,
+    confidence: 4,
+    created_at: '2026-04-03T10:06:00Z',
+  },
+  trace_events: [
+    {
+      type: 'tool_call',
+      step: 0,
+      ts: '2026-04-03T10:06:00Z',
+      tool: 'fred_fetch',
+      args: { series_id: 'CPIAUCSL' },
+    },
+    {
+      type: 'complete',
+      step: 1,
+      ts: '2026-04-03T10:06:02Z',
+      brief: {
+        ...briefFixture,
+        question: 'Second saved macro question',
+        query_class: 'event_probability',
+        thesis: 'Second saved thesis',
+        follow_up_context: null,
+        confidence: 4,
+        created_at: '2026-04-03T10:06:00Z',
+      },
+      query_class: 'event_probability',
+      session_context_used: true,
+      duration_ms: 850,
+    },
+  ],
+  evidence_state: {
+    active_claim_id: 'bull-2-disinflation-progress',
+    expanded_source_id: 'fred:CPIAUCSL',
+  },
+  created_at: '2026-04-03T10:06:00Z',
+  updated_at: '2026-04-03T10:06:00Z',
 } as const
 
 describe('HomePage workspace persistence', () => {
@@ -232,5 +296,149 @@ describe('HomePage workspace persistence', () => {
     })
 
     expect(screen.getByTestId('workspace-status')).toBeInTheDocument()
+  })
+
+  it('supports compare and integrity workspace actions', async () => {
+    server.use(
+      http.get('/api/v1/regime', () =>
+        HttpResponse.json({
+          dimensions: {
+            growth: 'EXPANSION',
+            inflation: 'ELEVATED',
+            monetary: 'RESTRICTIVE',
+            credit: 'CAUTION',
+            labor: 'TIGHT',
+          },
+          narrative: 'n',
+          updated_at: '2026-04-03T10:00:00Z',
+        })
+      ),
+      http.get('/api/v1/research/sessions', ({ request }) => {
+        const url = new URL(request.url)
+        if (url.searchParams.get('search') === 'Second') {
+          return HttpResponse.json({ sessions: [savedSummaryTwo], count: 1 })
+        }
+        return HttpResponse.json({ sessions: [savedSummary, savedSummaryTwo], count: 2 })
+      }),
+      http.get('/api/v1/research/sessions/compare', () =>
+        HttpResponse.json({
+          left_id: savedSummary.id,
+          right_id: savedSummaryTwo.id,
+          signature_match: false,
+          metadata_diffs: [
+            { field: 'query_class', left: 'macro_outlook', right: 'event_probability', changed: true },
+          ],
+          claim_diffs: {
+            bull_added: ['bull-2-disinflation-progress'],
+            bull_removed: ['bull-1-inversion-easing'],
+          },
+          source_diffs: {
+            sources_added: ['fred:CPIAUCSL'],
+            sources_removed: ['fred:T10Y2Y'],
+          },
+          trace_diffs: {
+            left_event_count: 2,
+            right_event_count: 2,
+            event_count_delta: 0,
+            event_type_deltas: { complete: 0, tool_call: 0 },
+            left_step_range: [0, 1],
+            right_step_range: [0, 1],
+          },
+          summary: {
+            changed_fields: ['query_class'],
+            total_changed_fields: 1,
+            total_claim_changes: 2,
+            total_source_changes: 2,
+            thesis_changed: true,
+            confidence_changed: true,
+            signature_match: false,
+          },
+        })
+      ),
+      http.get('/api/v1/research/sessions/:savedId/integrity', ({ params }) =>
+        HttpResponse.json({
+          id: params.savedId,
+          signature_valid: true,
+          canonical_signature: 'sig',
+          recomputed_signature: 'sig',
+          trace_event_count: 2,
+          trace_step_order_valid: true,
+          trace_step_unique: true,
+          evidence_state_valid: true,
+          issues: [],
+          checked_at: '2026-04-03T10:10:00Z',
+          provenance: {},
+        })
+      ),
+      http.get('/api/v1/research/sessions/integrity', () =>
+        HttpResponse.json({
+          reports: [
+            {
+              id: savedSummary.id,
+              signature_valid: true,
+              canonical_signature: 'sig-a',
+              recomputed_signature: 'sig-a',
+              trace_event_count: 2,
+              trace_step_order_valid: true,
+              trace_step_unique: true,
+              evidence_state_valid: true,
+              issues: [],
+              checked_at: '2026-04-03T10:10:00Z',
+              provenance: {},
+            },
+            {
+              id: savedSummaryTwo.id,
+              signature_valid: true,
+              canonical_signature: 'sig-b',
+              recomputed_signature: 'sig-b',
+              trace_event_count: 2,
+              trace_step_order_valid: true,
+              trace_step_unique: true,
+              evidence_state_valid: true,
+              issues: [],
+              checked_at: '2026-04-03T10:10:00Z',
+              provenance: {},
+            },
+          ],
+          count: 2,
+          healthy_count: 2,
+          issue_count: 0,
+        })
+      ),
+      http.get('/api/v1/research/sessions/:savedId', ({ params }) => {
+        if (params.savedId === savedSummaryTwo.id) {
+          return HttpResponse.json(savedRecordTwo)
+        }
+        return HttpResponse.json(savedRecord)
+      })
+    )
+
+    render(<HomePage />)
+
+    expect(await screen.findByTestId('workspace-item-0')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByTestId('workspace-compare-left'), {
+      target: { value: savedSummary.id },
+    })
+    fireEvent.change(screen.getByTestId('workspace-compare-right'), {
+      target: { value: savedSummaryTwo.id },
+    })
+    fireEvent.click(screen.getByTestId('workspace-compare-run'))
+
+    expect(await screen.findByTestId('workspace-compare-result')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-compare-signature')).toHaveTextContent('different')
+
+    fireEvent.click(screen.getByTestId('workspace-verify-0'))
+    expect(await screen.findByTestId('workspace-integrity-report')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-integrity-run-all'))
+    expect(await screen.findByTestId('workspace-integrity-overview')).toHaveTextContent('Checked 2 sessions')
+
+    fireEvent.change(screen.getByTestId('workspace-search-input'), {
+      target: { value: 'Second' },
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Second saved macro question')).toBeInTheDocument()
+    })
   })
 })

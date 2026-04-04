@@ -49,15 +49,55 @@ Validation notes:
 - `question: str`
 - `mode: "demo" | "live"`
 - `session_id: str` (runtime research-thread id used for follow-ups)
+- `label: str | null` (operator-managed display label)
 - `query_class: "macro_outlook" | "event_probability" | "ticker_macro" | null`
 - `follow_up_context: str | null`
 - `brief: ResearchBrief`
 - `trace_events: list[SavedTraceEvent]`
 - `evidence_state: { active_claim_id, expanded_source_id } | null`
+- `archived: bool`
+- `archived_at: str | null`
 - `created_at: str (ISO)`
 - `saved_at: str (ISO)`
 - `updated_at: str (ISO)`
 - `canonical_signature: str` (SHA256 of canonical content for deterministic audit checks)
+
+Canonical signature notes:
+
+- Canonical hashing intentionally excludes mutable management metadata (`label`, `archived`, `archived_at`, `updated_at`) so analytical payload integrity remains stable.
+
+## SessionComparison
+
+- `left_id: str`
+- `right_id: str`
+- `signature_match: bool`
+- `metadata_diffs: list[{ field, left, right, changed }]`
+- `claim_diffs: { bull_added, bull_removed, bear_added, bear_removed, risk_added, risk_removed }`
+- `source_diffs: { sources_added, sources_removed }`
+- `trace_diffs: { left_event_count, right_event_count, event_count_delta, event_type_deltas, left_step_range, right_step_range }`
+- `summary: { changed_fields, total_changed_fields, total_claim_changes, total_source_changes, thesis_changed, confidence_changed, signature_match }`
+
+## SessionIntegrityReport
+
+- `id: str`
+- `signature_valid: bool`
+- `canonical_signature: str`
+- `recomputed_signature: str`
+- `trace_event_count: int`
+- `trace_step_order_valid: bool`
+- `trace_step_unique: bool`
+- `evidence_state_valid: bool`
+- `issues: list[str]`
+- `checked_at: str (ISO)`
+- `provenance: dict[str, Any]`
+
+## SessionBundleExport
+
+- `bundle_version: str`
+- `exported_at: str (ISO)`
+- `session: SavedResearchSession`
+- `integrity: SessionIntegrityReport`
+- `provenance: { source, app_version, model, mode }`
 
 ## MispricingScore
 

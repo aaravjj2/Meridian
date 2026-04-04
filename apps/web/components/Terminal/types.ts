@@ -84,9 +84,13 @@ export type SavedResearchSessionSummary = {
   question: string
   mode: 'demo' | 'live'
   session_id: string
+  label?: string | null
   query_class?: ResearchBrief['query_class']
   follow_up_context?: string | null
+  archived?: boolean
+  archived_at?: string | null
   saved_at: string
+  updated_at?: string
   canonical_signature: string
 }
 
@@ -94,6 +98,53 @@ export type SavedResearchSession = SavedResearchSessionSummary & {
   brief: ResearchBrief
   trace_events: TraceEvent[]
   evidence_state?: EvidenceNavigationState | null
+  archived?: boolean
+  archived_at?: string | null
   created_at: string
   updated_at: string
+}
+
+export type SessionComparison = {
+  left_id: string
+  right_id: string
+  signature_match: boolean
+  metadata_diffs: Array<{
+    field: string
+    left: unknown
+    right: unknown
+    changed: boolean
+  }>
+  claim_diffs: Record<string, string[]>
+  source_diffs: Record<string, string[]>
+  trace_diffs: {
+    left_event_count: number
+    right_event_count: number
+    event_count_delta: number
+    event_type_deltas: Record<string, number>
+    left_step_range: Array<number | null>
+    right_step_range: Array<number | null>
+  }
+  summary: {
+    changed_fields: string[]
+    total_changed_fields: number
+    total_claim_changes: number
+    total_source_changes: number
+    thesis_changed: boolean
+    confidence_changed: boolean
+    signature_match: boolean
+  }
+}
+
+export type SessionIntegrityReport = {
+  id: string
+  signature_valid: boolean
+  canonical_signature: string
+  recomputed_signature: string
+  trace_event_count: number
+  trace_step_order_valid: boolean
+  trace_step_unique: boolean
+  evidence_state_valid: boolean
+  issues: string[]
+  checked_at: string
+  provenance: Record<string, unknown>
 }

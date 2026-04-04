@@ -318,12 +318,28 @@ id: str
 question: str
 mode: Literal["demo", "live"]
 session_id: str
+label: str | None
+query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None
+follow_up_context: str | None
 brief: ResearchBrief
 trace_events: SavedTraceEvent[]
 evidence_state?: { active_claim_id, expanded_source_id }
+archived: bool
+archived_at: str | None
+created_at: str
 saved_at: str
+updated_at: str
 canonical_signature: str
 ```
+
+Phase 5 adds management/audit layers over these records:
+
+- lifecycle controls (`rename`, `archive`, `delete`)
+- structured pairwise comparison (`/research/sessions/compare`)
+- integrity and provenance checks (`/research/sessions/{id}/integrity`, `/research/sessions/integrity`)
+- self-contained bundle export (`/research/sessions/{id}/bundle`)
+
+Canonical signatures are computed from analytical content (question, brief, trace, evidence state) and intentionally exclude mutable management metadata (`label`, archive state, timestamps).
 
 The workspace persistence layer stores these records as JSON files in
 `data/processed/research_sessions/` for single-user local/demo-safe operation.

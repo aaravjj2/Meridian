@@ -132,15 +132,25 @@ Response:
       "question": "What does the current yield curve imply for equities?",
       "mode": "demo",
       "session_id": "sess-abcd1234",
+      "label": "Baseline curve view",
       "query_class": "macro_outlook",
       "follow_up_context": "Follow-up to prior question: ...",
+      "archived": false,
+      "archived_at": null,
       "saved_at": "2026-04-03T23:59:59Z",
+      "updated_at": "2026-04-03T23:59:59Z",
       "canonical_signature": "<sha256>"
     }
   ],
   "count": 1
 }
 ```
+
+Query parameters:
+
+- `search`: optional substring filter over id/question/label/session_id/query_class
+- `include_archived`: optional boolean (default `false`)
+- `query_class`: optional `macro_outlook | event_probability | ticker_macro`
 
 ### POST /api/v1/research/sessions
 
@@ -151,15 +161,86 @@ Request body includes:
 - question
 - mode (demo | live)
 - session_id (runtime thread id)
+- label (optional operator label)
 - brief (full ResearchBrief payload)
 - trace_events (SSE-compatible trace payload)
 - evidence_state (active_claim_id, expanded_source_id)
 
 Response is the full saved session record including `id` and `canonical_signature`.
 
+### PATCH /api/v1/research/sessions/{saved_id}/rename
+
+Renames a saved session label.
+
+Request body:
+
+```json
+{
+  "label": "Optional new label"
+}
+```
+
+### PATCH /api/v1/research/sessions/{saved_id}/archive
+
+Archives or unarchives a saved session.
+
+Request body:
+
+```json
+{
+  "archived": true
+}
+```
+
+### DELETE /api/v1/research/sessions/{saved_id}
+
+Deletes a saved session JSON record from local storage.
+
+Response:
+
+```json
+{
+  "deleted": true,
+  "id": "rs-..."
+}
+```
+
 ### GET /api/v1/research/sessions/{saved_id}
 
 Returns a full saved session record including brief, trace, and evidence state.
+
+### GET /api/v1/research/sessions/compare
+
+Compares two saved sessions and returns structured diffs.
+
+Query parameters:
+
+- `left_id`
+- `right_id`
+
+Response includes:
+
+- `signature_match`
+- `metadata_diffs`
+- `claim_diffs`
+- `source_diffs`
+- `trace_diffs`
+- `summary`
+
+### GET /api/v1/research/sessions/integrity
+
+Runs integrity checks across matching saved sessions.
+
+Query parameters:
+
+- `search` (optional)
+- `include_archived` (optional, default `true`)
+
+Response includes per-session `signature_valid`, trace ordering checks, evidence-state validity, and issue lists.
+
+### GET /api/v1/research/sessions/{saved_id}/integrity
+
+Runs integrity checks for a single saved session.
 
 ### GET /api/v1/research/sessions/{saved_id}/export
 
@@ -173,6 +254,14 @@ Behavior:
 
 - `format=json`: structured machine-readable full session payload
 - `format=markdown`: analyst-readable report with thesis, claims, sources, conflicts, and trace payload
+
+### GET /api/v1/research/sessions/{saved_id}/bundle
+
+Exports a self-contained bundle JSON payload with:
+
+- full saved session record
+- integrity report (recomputed signature + structural checks)
+- provenance metadata (`source`, `app_version`, `model`, `mode`)
 
 ### GET /api/v1/screener
 

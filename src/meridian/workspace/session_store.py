@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 import hashlib
 import json
 import os
@@ -12,6 +13,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from meridian.normalisation.schemas import ResearchBrief
 from meridian.settings import ROOT_DIR
+
+
+QueryClass = Literal["macro_outlook", "event_probability", "ticker_macro"]
 
 
 def _iso_now() -> str:
@@ -56,9 +60,18 @@ class SaveResearchSessionRequest(BaseModel):
     question: str = Field(min_length=3)
     mode: Literal["demo", "live"] = "demo"
     session_id: str = Field(min_length=4, max_length=64)
+    label: str | None = Field(default=None, max_length=120)
     brief: ResearchBrief
     trace_events: list[SavedTraceEvent] = Field(default_factory=list)
     evidence_state: EvidenceNavigationState | None = None
+
+    @field_validator("label")
+    @classmethod
+    def normalize_label(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class SavedResearchSession(BaseModel):
@@ -66,11 +79,14 @@ class SavedResearchSession(BaseModel):
     question: str
     mode: Literal["demo", "live"]
     session_id: str
-    query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None = None
+    label: str | None = None
+    query_class: QueryClass | None = None
     follow_up_context: str | None = None
     brief: ResearchBrief
     trace_events: list[SavedTraceEvent] = Field(default_factory=list)
     evidence_state: EvidenceNavigationState | None = None
+    archived: bool = False
+    archived_at: str | None = None
     created_at: str
     saved_at: str
     updated_at: str
@@ -90,10 +106,39 @@ class SavedResearchSessionSummary(BaseModel):
     question: str
     mode: Literal["demo", "live"]
     session_id: str
-    query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None = None
+    label: str | None = None
+    query_class: QueryClass | None = None
     follow_up_context: str | None = None
+    archived: bool = False
+    archived_at: str | None = None
     saved_at: str
+    updated_at: str
     canonical_signature: str
+
+
+class SessionComparison(BaseModel):
+    left_id: str
+    right_id: str
+    signature_match: bool
+    metadata_diffs: list[dict[str, Any]] = Field(default_factory=list)
+    claim_diffs: dict[str, list[str]] = Field(default_factory=dict)
+    source_diffs: dict[str, list[str]] = Field(default_factory=dict)
+    trace_diffs: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class SessionIntegrityReport(BaseModel):
+    id: str
+    signature_valid: bool
+    canonical_signature: str
+    recomputed_signature: str
+    trace_event_count: int
+    trace_step_order_valid: bool
+    trace_step_unique: bool
+    evidence_state_valid: bool
+    issues: list[str] = Field(default_factory=list)
+    checked_at: str
+    provenance: dict[str, Any] = Field(default_factory=dict)
 
 
 class ResearchSessionStore:
@@ -104,26 +149,57 @@ class ResearchSessionStore:
     def _path_for_id(self, saved_id: str) -> Path:
         return self.root_dir / f"{saved_id}.json"
 
-    def _compute_signature(self, payload: SaveResearchSessionRequest) -> str:
+    def _canonical_trace_events(self, events: list[SavedTraceEvent]) -> list[dict[str, Any]]:
         canonical_events: list[dict[str, Any]] = []
-        for event in payload.trace_events:
+        for event in events:
             event_payload = event.model_dump(exclude_none=True)
             event_payload.pop("session_id", None)
             event_payload.pop("followup", None)
             event_payload.pop("duration_ms", None)
             canonical_events.append(event_payload)
+        return canonical_events
 
-        canonical_payload = {
-            "question": payload.question,
-            "mode": payload.mode,
-            "query_class": payload.brief.query_class,
-            "follow_up_context": payload.brief.follow_up_context,
-            "brief": payload.brief.model_dump(),
-            "trace_events": canonical_events,
-            "evidence_state": payload.evidence_state.model_dump(exclude_none=True) if payload.evidence_state else None,
+    def _canonical_payload(
+        self,
+        question: str,
+        mode: Literal["demo", "live"],
+        brief: ResearchBrief,
+        trace_events: list[SavedTraceEvent],
+        evidence_state: EvidenceNavigationState | None,
+    ) -> dict[str, Any]:
+        return {
+            "question": question,
+            "mode": mode,
+            "query_class": brief.query_class,
+            "follow_up_context": brief.follow_up_context,
+            "brief": brief.model_dump(),
+            "trace_events": self._canonical_trace_events(trace_events),
+            "evidence_state": evidence_state.model_dump(exclude_none=True) if evidence_state else None,
         }
+
+    def _hash_canonical_payload(self, canonical_payload: dict[str, Any]) -> str:
         encoded = json.dumps(canonical_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
+
+    def _compute_signature(self, payload: SaveResearchSessionRequest) -> str:
+        canonical_payload = self._canonical_payload(
+            question=payload.question,
+            mode=payload.mode,
+            brief=payload.brief,
+            trace_events=payload.trace_events,
+            evidence_state=payload.evidence_state,
+        )
+        return self._hash_canonical_payload(canonical_payload)
+
+    def _compute_signature_for_record(self, record: SavedResearchSession) -> str:
+        canonical_payload = self._canonical_payload(
+            question=record.question,
+            mode=record.mode,
+            brief=record.brief,
+            trace_events=record.trace_events,
+            evidence_state=record.evidence_state,
+        )
+        return self._hash_canonical_payload(canonical_payload)
 
     def _build_record(self, saved_id: str, payload: SaveResearchSessionRequest, timestamp: str) -> SavedResearchSession:
         return SavedResearchSession(
@@ -131,44 +207,106 @@ class ResearchSessionStore:
             question=payload.question,
             mode=payload.mode,
             session_id=payload.session_id,
+            label=payload.label,
             query_class=payload.brief.query_class,
             follow_up_context=payload.brief.follow_up_context,
             brief=payload.brief,
             trace_events=payload.trace_events,
             evidence_state=payload.evidence_state,
+            archived=False,
+            archived_at=None,
             created_at=payload.brief.created_at,
             saved_at=timestamp,
             updated_at=timestamp,
             canonical_signature=self._compute_signature(payload),
         )
 
+    def _write_record(self, record: SavedResearchSession) -> None:
+        self._path_for_id(record.id).write_text(record.model_dump_json(indent=2) + "\n", encoding="utf-8")
+
+    def _load_record(self, path: Path) -> SavedResearchSession | None:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            return SavedResearchSession.model_validate(payload)
+        except Exception:
+            return None
+
+    def _all_records(self) -> list[SavedResearchSession]:
+        records: list[SavedResearchSession] = []
+        for path in sorted(self.root_dir.glob("*.json")):
+            record = self._load_record(path)
+            if record is not None:
+                records.append(record)
+        records.sort(key=lambda item: item.saved_at, reverse=True)
+        return records
+
+    def _build_summary(self, record: SavedResearchSession) -> SavedResearchSessionSummary:
+        return SavedResearchSessionSummary(
+            id=record.id,
+            question=record.question,
+            mode=record.mode,
+            session_id=record.session_id,
+            label=record.label,
+            query_class=record.query_class,
+            follow_up_context=record.follow_up_context,
+            archived=record.archived,
+            archived_at=record.archived_at,
+            saved_at=record.saved_at,
+            updated_at=record.updated_at,
+            canonical_signature=record.canonical_signature,
+        )
+
+    def _matches_filters(
+        self,
+        record: SavedResearchSession,
+        search: str | None,
+        include_archived: bool,
+        query_class: QueryClass | None,
+    ) -> bool:
+        if not include_archived and record.archived:
+            return False
+        if query_class and record.query_class != query_class:
+            return False
+        if search:
+            token = search.strip().lower()
+            if token:
+                haystack = " ".join(
+                    [
+                        record.id,
+                        record.question,
+                        record.label or "",
+                        record.session_id,
+                        record.query_class or "",
+                    ]
+                ).lower()
+                if token not in haystack:
+                    return False
+        return True
+
     def save(self, payload: SaveResearchSessionRequest) -> SavedResearchSession:
         timestamp = _iso_now()
         saved_id = f"rs-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
         record = self._build_record(saved_id=saved_id, payload=payload, timestamp=timestamp)
-        self._path_for_id(saved_id).write_text(record.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        self._write_record(record)
         return record
 
-    def list_sessions(self) -> list[SavedResearchSessionSummary]:
+    def list_sessions(
+        self,
+        *,
+        search: str | None = None,
+        include_archived: bool = False,
+        query_class: QueryClass | None = None,
+    ) -> list[SavedResearchSessionSummary]:
         sessions: list[SavedResearchSessionSummary] = []
-        for path in sorted(self.root_dir.glob("*.json")):
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-                record = SavedResearchSession.model_validate(payload)
-            except Exception:
+        for record in self._all_records():
+            if not self._matches_filters(
+                record=record,
+                search=search,
+                include_archived=include_archived,
+                query_class=query_class,
+            ):
                 continue
-            sessions.append(
-                SavedResearchSessionSummary(
-                    id=record.id,
-                    question=record.question,
-                    mode=record.mode,
-                    session_id=record.session_id,
-                    query_class=record.query_class,
-                    follow_up_context=record.follow_up_context,
-                    saved_at=record.saved_at,
-                    canonical_signature=record.canonical_signature,
-                )
-            )
+            sessions.append(self._build_summary(record))
 
         sessions.sort(key=lambda item: item.saved_at, reverse=True)
         return sessions
@@ -177,14 +315,235 @@ class ResearchSessionStore:
         path = self._path_for_id(saved_id)
         if not path.exists():
             return None
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        return SavedResearchSession.model_validate(payload)
+        return self._load_record(path)
 
     def get_latest_for_session(self, session_id: str) -> SavedResearchSession | None:
-        candidates = [item for item in self.list_sessions() if item.session_id == session_id]
+        candidates = [item for item in self.list_sessions(include_archived=True) if item.session_id == session_id]
         if not candidates:
             return None
         return self.get(candidates[0].id)
+
+    def rename(self, saved_id: str, label: str | None) -> SavedResearchSession | None:
+        record = self.get(saved_id)
+        if record is None:
+            return None
+
+        normalized = label.strip() if label else ""
+        record.label = normalized or None
+        record.updated_at = _iso_now()
+        self._write_record(record)
+        return record
+
+    def set_archived(self, saved_id: str, archived: bool) -> SavedResearchSession | None:
+        record = self.get(saved_id)
+        if record is None:
+            return None
+
+        if record.archived == archived:
+            return record
+
+        now = _iso_now()
+        record.archived = archived
+        record.archived_at = now if archived else None
+        record.updated_at = now
+        self._write_record(record)
+        return record
+
+    def delete(self, saved_id: str) -> bool:
+        path = self._path_for_id(saved_id)
+        if not path.exists():
+            return False
+        path.unlink()
+        return True
+
+    def compare(self, left_id: str, right_id: str) -> SessionComparison | None:
+        left = self.get(left_id)
+        right = self.get(right_id)
+        if left is None or right is None:
+            return None
+
+        metadata_candidates: list[tuple[str, Any, Any]] = [
+            ("question", left.question, right.question),
+            ("label", left.label, right.label),
+            ("query_class", left.query_class, right.query_class),
+            ("follow_up_context", left.follow_up_context, right.follow_up_context),
+            ("mode", left.mode, right.mode),
+            ("archived", left.archived, right.archived),
+        ]
+        metadata_diffs = [
+            {
+                "field": field,
+                "left": left_value,
+                "right": right_value,
+                "changed": left_value != right_value,
+            }
+            for field, left_value, right_value in metadata_candidates
+        ]
+
+        left_bull = {item.claim_id for item in left.brief.bull_case}
+        right_bull = {item.claim_id for item in right.brief.bull_case}
+        left_bear = {item.claim_id for item in left.brief.bear_case}
+        right_bear = {item.claim_id for item in right.brief.bear_case}
+        left_risk = {item.claim_id for item in left.brief.key_risks}
+        right_risk = {item.claim_id for item in right.brief.key_risks}
+
+        claim_diffs = {
+            "bull_added": sorted(right_bull - left_bull),
+            "bull_removed": sorted(left_bull - right_bull),
+            "bear_added": sorted(right_bear - left_bear),
+            "bear_removed": sorted(left_bear - right_bear),
+            "risk_added": sorted(right_risk - left_risk),
+            "risk_removed": sorted(left_risk - right_risk),
+        }
+
+        left_sources = {f"{source.type}:{source.id}" for source in left.brief.sources}
+        right_sources = {f"{source.type}:{source.id}" for source in right.brief.sources}
+        source_diffs = {
+            "sources_added": sorted(right_sources - left_sources),
+            "sources_removed": sorted(left_sources - right_sources),
+        }
+
+        left_trace_counts = Counter(event.type for event in left.trace_events)
+        right_trace_counts = Counter(event.type for event in right.trace_events)
+        trace_types = sorted(set(left_trace_counts) | set(right_trace_counts))
+        trace_diffs = {
+            "left_event_count": len(left.trace_events),
+            "right_event_count": len(right.trace_events),
+            "event_count_delta": len(right.trace_events) - len(left.trace_events),
+            "event_type_deltas": {
+                event_type: right_trace_counts.get(event_type, 0) - left_trace_counts.get(event_type, 0)
+                for event_type in trace_types
+            },
+            "left_step_range": [
+                left.trace_events[0].step if left.trace_events else None,
+                left.trace_events[-1].step if left.trace_events else None,
+            ],
+            "right_step_range": [
+                right.trace_events[0].step if right.trace_events else None,
+                right.trace_events[-1].step if right.trace_events else None,
+            ],
+        }
+
+        changed_fields = [item["field"] for item in metadata_diffs if item["changed"]]
+        total_claim_changes = sum(len(values) for values in claim_diffs.values())
+        total_source_changes = len(source_diffs["sources_added"]) + len(source_diffs["sources_removed"])
+
+        summary = {
+            "changed_fields": changed_fields,
+            "total_changed_fields": len(changed_fields),
+            "total_claim_changes": total_claim_changes,
+            "total_source_changes": total_source_changes,
+            "thesis_changed": left.brief.thesis != right.brief.thesis,
+            "confidence_changed": left.brief.confidence != right.brief.confidence,
+            "signature_match": left.canonical_signature == right.canonical_signature,
+        }
+
+        return SessionComparison(
+            left_id=left.id,
+            right_id=right.id,
+            signature_match=left.canonical_signature == right.canonical_signature,
+            metadata_diffs=metadata_diffs,
+            claim_diffs=claim_diffs,
+            source_diffs=source_diffs,
+            trace_diffs=trace_diffs,
+            summary=summary,
+        )
+
+    def _evidence_state_valid(self, record: SavedResearchSession) -> bool:
+        state = record.evidence_state
+        if state is None:
+            return True
+
+        claim_ids = {
+            *[item.claim_id for item in record.brief.bull_case],
+            *[item.claim_id for item in record.brief.bear_case],
+            *[item.claim_id for item in record.brief.key_risks],
+        }
+        source_refs = {f"{source.type}:{source.id}" for source in record.brief.sources}
+
+        claim_ok = state.active_claim_id is None or state.active_claim_id in claim_ids
+        source_ok = state.expanded_source_id is None or state.expanded_source_id in source_refs
+        return claim_ok and source_ok
+
+    def build_integrity_report(self, record: SavedResearchSession) -> SessionIntegrityReport:
+        recomputed_signature = self._compute_signature_for_record(record)
+        trace_steps = [event.step for event in record.trace_events]
+        trace_step_order_valid = all(
+            previous <= current for previous, current in zip(trace_steps, trace_steps[1:])
+        )
+        trace_step_unique = len(trace_steps) == len(set(trace_steps))
+        evidence_state_valid = self._evidence_state_valid(record)
+
+        issues: list[str] = []
+        if record.canonical_signature != recomputed_signature:
+            issues.append("canonical signature mismatch")
+        if not trace_step_order_valid:
+            issues.append("trace steps are out of order")
+        if not trace_step_unique:
+            issues.append("trace steps contain duplicates")
+        if not evidence_state_valid:
+            issues.append("evidence navigation state references missing claim/source")
+
+        return SessionIntegrityReport(
+            id=record.id,
+            signature_valid=record.canonical_signature == recomputed_signature,
+            canonical_signature=record.canonical_signature,
+            recomputed_signature=recomputed_signature,
+            trace_event_count=len(record.trace_events),
+            trace_step_order_valid=trace_step_order_valid,
+            trace_step_unique=trace_step_unique,
+            evidence_state_valid=evidence_state_valid,
+            issues=issues,
+            checked_at=_iso_now(),
+            provenance={
+                "mode": record.mode,
+                "session_id": record.session_id,
+                "query_class": record.query_class,
+                "saved_at": record.saved_at,
+                "created_at": record.created_at,
+                "updated_at": record.updated_at,
+                "archived": record.archived,
+            },
+        )
+
+    def verify_integrity(self, saved_id: str) -> SessionIntegrityReport | None:
+        record = self.get(saved_id)
+        if record is None:
+            return None
+        return self.build_integrity_report(record)
+
+    def verify_integrity_all(
+        self,
+        *,
+        search: str | None = None,
+        include_archived: bool = True,
+    ) -> list[SessionIntegrityReport]:
+        reports: list[SessionIntegrityReport] = []
+        for record in self._all_records():
+            if not self._matches_filters(
+                record=record,
+                search=search,
+                include_archived=include_archived,
+                query_class=None,
+            ):
+                continue
+            reports.append(self.build_integrity_report(record))
+        return reports
+
+    def export_bundle_payload(self, record: SavedResearchSession) -> dict[str, Any]:
+        integrity = self.build_integrity_report(record)
+        return {
+            "bundle_version": "phase-5",
+            "exported_at": _iso_now(),
+            "session": record.model_dump(),
+            "integrity": integrity.model_dump(),
+            "provenance": {
+                "source": "meridian-workspace",
+                "app_version": "0.1.0",
+                "model": "glm-5.1",
+                "mode": record.mode,
+            },
+        }
 
     def export_markdown(self, record: SavedResearchSession) -> str:
         trace_summary = {
@@ -199,12 +558,16 @@ class ResearchSessionStore:
             "",
             "## Metadata",
             f"- Question: {record.question}",
+            f"- Label: {record.label or 'none'}",
             f"- Mode: {record.mode}",
             f"- Runtime Session ID: {record.session_id}",
             f"- Query Class: {record.query_class or 'unknown'}",
             f"- Follow-up Context: {record.follow_up_context or 'none'}",
+            f"- Archived: {record.archived}",
+            f"- Archived At: {record.archived_at or 'n/a'}",
             f"- Brief Created At: {record.created_at}",
             f"- Saved At: {record.saved_at}",
+            f"- Updated At: {record.updated_at}",
             f"- Canonical Signature: {record.canonical_signature}",
             "",
             "## Thesis",
