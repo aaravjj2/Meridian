@@ -1,0 +1,409 @@
+{
+  "slug": "phase-6-provenance-eval",
+  "generated_at": "2026-04-04T19-43-57Z",
+  "git_sha": "7b7f2cc88fe6cf27b006cba139ecb3ebcf29a1a7",
+  "git_branch": "main",
+  "git_dirty": false,
+  "git_dirty_files": [],
+  "objective": "Truth-tightening audit pass to align code, docs, validation gates, and deployment narrative.",
+  "scope": [],
+  "commands_run": [
+    "npm run tsc",
+    "npm run vitest -- --reporter=json --outputFile /home/aarav/Aarav/Meridian/artifacts/harness/2026-04-04T19-42-45Z/vitest-report.json",
+    "/home/aarav/Aarav/Meridian/.venv/bin/python -m pytest -q --junitxml /home/aarav/Aarav/Meridian/artifacts/harness/2026-04-04T19-42-45Z/pytest-report.xml",
+    "npm run playwright -- --reporter=json"
+  ],
+  "results": {
+    "all_green": true,
+    "test_layers_green": true,
+    "layers": {
+      "typescript": {
+        "exit_code": 0,
+        "passed": null,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0,
+        "duration_ms": 1206
+      },
+      "frontend_unit": {
+        "exit_code": 0,
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0,
+        "duration_ms": 1949
+      },
+      "backend_unit": {
+        "exit_code": 0,
+        "passed": 51,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0,
+        "duration_ms": 28032
+      },
+      "e2e": {
+        "exit_code": 0,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0,
+        "duration_ms": 27660
+      }
+    },
+    "requirements": {
+      "typescript_errors": 0,
+      "frontend_failed": 0,
+      "frontend_skipped": 0,
+      "backend_failed": 0,
+      "backend_skipped": 0,
+      "e2e_failed": 0,
+      "e2e_skipped": 0,
+      "e2e_retries": 0
+    },
+    "determinism_signature_sha256": "8c70dc657ec11b8a88859ffb44280f5d0462ead5950c59e61a9fb50270dee4fc"
+  },
+  "root_causes": [],
+  "known_limitations": [],
+  "deployment_status": "Vercel config present; frontend rewrite target configured via MERIDIAN_API_BASE_URL=https://meridian-api.railway.app.",
+  "deployment_evidence": [
+    "vercel.json"
+  ],
+  "harness_summary": "artifacts/harness/2026-04-04T19-42-45Z/summary.json",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "1053ac86e34c092db51e4f347cc03f041aa5ef1f865fe5c7a06721199d6a4403",
+      "size": 380
+    },
+    {
+      "path": "TOUR.webm",
+      "sha256": "3cd944f5c4941200432c7c971099d8e3bc06dfc86943aa0d3bd3b088d59379ff",
+      "size": 180617
+    },
+    {
+      "path": "deployment/ci.yml",
+      "sha256": "558604a54fb0eb4e4af61028bf43712e258460eded58a3d26d293e321e289a94",
+      "size": 797
+    },
+    {
+      "path": "deployment/vercel.json",
+      "sha256": "9b5e79d0c68b91c7c37351be091f0c0614f5be110ae3a724aa41cf1d60644dd6",
+      "size": 398
+    },
+    {
+      "path": "manifest.json",
+      "sha256": "459d96f81bceaaa91c5c95f971a750c732e3605abc1c7a0ec5203b7bf189512d",
+      "size": 2176
+    },
+    {
+      "path": "playwright-report/data/106dc73d8c507aa2eab7cdd7dd76d8dd5232557d.zip",
+      "sha256": "5dcc71ef6a70343c4dd9f74bc71a988abde617bc4187ae043d655cf17743275d",
+      "size": 762342
+    },
+    {
+      "path": "playwright-report/data/29d2ba9f54f2e2957b256cce7298b0975ffa93ad.png",
+      "sha256": "a59eae04a773e31ca6a385271b0f19c4887ef99dda3a1909f01bd495a557614e",
+      "size": 473633
+    },
+    {
+      "path": "playwright-report/data/2e544fb192f5629d39e0ac7f41d526f251e1b2e3.png",
+      "sha256": "80acc2d27bb309e860a5fb30fd53183657d712ff4e431cad5b923f5c7f6d41f9",
+      "size": 502485
+    },
+    {
+      "path": "playwright-report/data/32ea812c57b380fa897c75719ecbb4d674d76a33.zip",
+      "sha256": "6e04d05a0d17d434cc36730aaeb1bdf6b89173d18879b6b49716395a43051b5e",
+      "size": 489422
+    },
+    {
+      "path": "playwright-report/data/40933a6049e11ccc33daa81cd41d88e690ded530.zip",
+      "sha256": "f9a3b315e19c29af404604318d4591caf043014a291b24d5b4f098d9b9560586",
+      "size": 786414
+    },
+    {
+      "path": "playwright-report/data/468c269e869242dd86229bc38349b54af4a42e87.zip",
+      "sha256": "69d482429cbe9bb40570c5757e1f96864c8f1598d87a2f8934d2e635a2d7b37e",
+      "size": 821203
+    },
+    {
+      "path": "playwright-report/data/5133f00e240bbf4542bfeca2d8aba0a31e630fa9.webm",
+      "sha256": "957f9194c55d1b72210c19976d519bda3f3a46fb9c938c6971a3d6761ea23477",
+      "size": 190301
+    },
+    {
+      "path": "playwright-report/data/6f0a5669844a20a26497f21f24c9c129abe8cf1e.md",
+      "sha256": "5c23e016ee60cb9b325c82fd96f1e886f00301bf94ef99eeb4dfbf98867bad19",
+      "size": 9123
+    },
+    {
+      "path": "playwright-report/data/8a4e10dbe116f66c5819b664306b9ac4e08b6ee2.webm",
+      "sha256": "633a0d877858fbaad125e1f6b7c9de6f21eafd5b0c41112d8ab00920ad36cdc4",
+      "size": 190301
+    },
+    {
+      "path": "playwright-report/data/8d168966cd8234f141b0c75a22572bf5fe872e4e.webm",
+      "sha256": "1f505cb8f5b459643ff8494dfab333b3d6504f534876247b4989bf30afc32905",
+      "size": 182578
+    },
+    {
+      "path": "playwright-report/data/95133217455737c4829298026a3ad9075aba0093.md",
+      "sha256": "f9ca0e97a5f02a9bb3ec5928cc7d5bce0373af9625974d6e7d6c651b5a5cfff6",
+      "size": 5349
+    },
+    {
+      "path": "playwright-report/data/9e275ce899bcccb018372a6f3201ee1f857a9631.md",
+      "sha256": "d19a08dc338de3cc614f7e7d8042a14c505638d983cbbdbb11f180d8590dc82a",
+      "size": 8936
+    },
+    {
+      "path": "playwright-report/data/a8c8fcb3a3b75adf8217f4d76cf8f5e960c0cc13.webm",
+      "sha256": "c12c025cd670db5158124fc625e5fe2d500f0adf261198876f7f9ac3e4cc884a",
+      "size": 190301
+    },
+    {
+      "path": "playwright-report/data/b141ed025fa861c09ddb2feac7ab1f0420a0e5d8.webm",
+      "sha256": "1204f6ab9904601a186d73d5015516e8168f3af4f26e0edf70dd7f728819242f",
+      "size": 75178
+    },
+    {
+      "path": "playwright-report/data/ce6c9b4aae997bd7ba549650aa838a49de0843d6.png",
+      "sha256": "af5b7745f9d6b3925295016a60d794ce82dc116ea4d02c3ff84762be7dd0263d",
+      "size": 381809
+    },
+    {
+      "path": "playwright-report/data/d1ea46426c9b7557fc20c43160aeb3a11979aa1b.md",
+      "sha256": "93d49ea57b92cf6e69eafb5ef9aa8e16fcc1adca3c1e631fce379995919ed382",
+      "size": 9826
+    },
+    {
+      "path": "playwright-report/data/d6e93bf46697914aa09d4138550c2c19053084c1.zip",
+      "sha256": "671b19d606f4b930cceb14568ef127ae495f3cf1971bda1d288111db3b45bae6",
+      "size": 821414
+    },
+    {
+      "path": "playwright-report/data/dd60b081e081eb4c864a2a52f8228802b072ac83.md",
+      "sha256": "e959b8e7f20c3a7a5c9108942b30e69e63a148e78f592f47bb2473514213f1a0",
+      "size": 2883
+    },
+    {
+      "path": "playwright-report/index.html",
+      "sha256": "f611736c1de1d832442bf2ddbec33b9c5694f303c010ebdd2829de597cb458b5",
+      "size": 535260
+    },
+    {
+      "path": "playwright-report/trace/assets/codeMirrorModule-DS0FLvoc.js",
+      "sha256": "dd5360bef14066001507518e8c2f6b3e525ac1cc41fa7fdf23c34e96f4efadb1",
+      "size": 313023
+    },
+    {
+      "path": "playwright-report/trace/assets/defaultSettingsView-GTWI-W_B.js",
+      "sha256": "9c48649a4dfc1ba799a687c4ac96a6a9ada57696116044c227c67c51ebbfdce7",
+      "size": 643623
+    },
+    {
+      "path": "playwright-report/trace/codeMirrorModule.DYBRYzYX.css",
+      "sha256": "70bf421a13e87857ca684bfa2cc55f06d7c5a50f71253a3ff1d74769b14a957e",
+      "size": 6421
+    },
+    {
+      "path": "playwright-report/trace/codicon.DCmgc-ay.ttf",
+      "sha256": "0f1d5219934e96e83b8db162d60b4d8c09b5de1e7d38031cbafe4a3c0f2889c9",
+      "size": 80340
+    },
+    {
+      "path": "playwright-report/trace/defaultSettingsView.B4dS75f0.css",
+      "sha256": "844a328b121a95937eec1893b391d5a3473194568dc585ba927f16c8ed0f90c8",
+      "size": 110544
+    },
+    {
+      "path": "playwright-report/trace/index.C5466mMT.js",
+      "sha256": "452eab81f93a4001fee058fa2cd1d4e245eed3d28bfe10f7296a6c099ce8d64f",
+      "size": 6509
+    },
+    {
+      "path": "playwright-report/trace/index.CzXZzn5A.css",
+      "sha256": "4ec2a3d49db259ce9025cb4fa48d73b1afd58215e567eef3b4a4cbf76c1674d9",
+      "size": 2111
+    },
+    {
+      "path": "playwright-report/trace/index.html",
+      "sha256": "4c31886e6b746d02ab0ee0f5f5b8524d855573d6fdc99bf1a280db90a51e0987",
+      "size": 2283
+    },
+    {
+      "path": "playwright-report/trace/manifest.webmanifest",
+      "sha256": "d8540500603a32a39fe7e5a0375dc0f9ebafd11118e06a846db7efc608223ab9",
+      "size": 429
+    },
+    {
+      "path": "playwright-report/trace/playwright-logo.svg",
+      "sha256": "6b0a4367bdeab10995bc239278f04c68c10e48adbec15e799e01909a0d66dcb9",
+      "size": 5033
+    },
+    {
+      "path": "playwright-report/trace/snapshot.html",
+      "sha256": "e192546675329f804bb9d4afbd96f7a1368e53cc42a05f0cc4a57949df7bc245",
+      "size": 935
+    },
+    {
+      "path": "playwright-report/trace/sw.bundle.js",
+      "sha256": "c76aa023df69a0835d12bfae95dddf91c5c90e4e87791d64f41aa051f394d678",
+      "size": 95084
+    },
+    {
+      "path": "playwright-report/trace/uiMode.Btcz36p_.css",
+      "sha256": "bfe8330cc78eeb1b1c4d8983aab7068d725526e407903ee19e515996250cb221",
+      "size": 60239
+    },
+    {
+      "path": "playwright-report/trace/uiMode.Vipi55dB.js",
+      "sha256": "fb1005d82811458ffd6ae041d79cc7ebabcb6073f7fe03b5f7694c093433ba7b",
+      "size": 38156
+    },
+    {
+      "path": "playwright-report/trace/uiMode.html",
+      "sha256": "6cb988cb543334e85350fea36b4ccecae80e76294e0f6c326d7067a1cfa7aaaa",
+      "size": 647
+    },
+    {
+      "path": "playwright-report/trace/xtermModule.DYP7pi_n.css",
+      "sha256": "7c5a01f382f76539fc9b4db6b18e18a7035741845fd14968c5cdc0a7e373d817",
+      "size": 4150
+    },
+    {
+      "path": "screenshots/homepage.png",
+      "sha256": "9d137e29c24d51567e1f47c0a77449ca28698463e9d218c9c843d7a490c50169",
+      "size": 54743
+    },
+    {
+      "path": "screenshots/methodology.png",
+      "sha256": "b590174b6666c0c6a1e68742cca57d6842fa7ccc5d30c523f46b4f944d658609",
+      "size": 451548
+    },
+    {
+      "path": "screenshots/screener.png",
+      "sha256": "3dd69f3e6b6e4980dc060123ebf4eea44790453abea2866229491c248ad16d4c",
+      "size": 364280
+    },
+    {
+      "path": "test-results/backend_unit.log",
+      "sha256": "d7fecd335baf00ee89ed5803a9e896147db1d704d131cb263f11198a30bb4cce",
+      "size": 298
+    },
+    {
+      "path": "test-results/e2e.log",
+      "sha256": "a849079692ce7ef9f3be4e2d4e15cbe194153cf464280d0a1366335a371468ae",
+      "size": 14203
+    },
+    {
+      "path": "test-results/frontend_unit.log",
+      "sha256": "e8370f7aa68a892d51a45cc7763bf18e90ca4ee52e19959949abe27b301500ef",
+      "size": 622
+    },
+    {
+      "path": "test-results/harness-summary.json",
+      "sha256": "ef050389c71966b7e5b7807da9df9c81410810362629e5d75533fa947d6355e0",
+      "size": 2727
+    },
+    {
+      "path": "test-results/playwright/.last-run.json",
+      "sha256": "91d1c43004802cd49950d78eb11c8fa7d05da8ffffe219a8b13b2f561bc00903",
+      "size": 45
+    },
+    {
+      "path": "test-results/playwright/test_methodology-methodology-page-renders/test-finished-1.png",
+      "sha256": "22554ebe54a8f6d532110cca18660301b077cdffb3c7d800fc402110a76690d6",
+      "size": 286554
+    },
+    {
+      "path": "test-results/playwright/test_methodology-methodology-page-renders/trace.zip",
+      "sha256": "c4b6fd558df3ed45934e41c8f021b079754545f05029e263c534d0813e9f3df2",
+      "size": 643374
+    },
+    {
+      "path": "test-results/playwright/test_methodology-methodology-page-renders/video.webm",
+      "sha256": "32718998a391490011e229a0ca264ff43c2b8b5308ea150ff7f5cf923df553c9",
+      "size": 48436
+    },
+    {
+      "path": "test-results/playwright/test_regime-regime-strip-renders-all-dimensions/test-finished-1.png",
+      "sha256": "f732ce7fd11dd03319cc28f358d53e2ca830035ff537efbb1805fbacccc1b3cf",
+      "size": 39415
+    },
+    {
+      "path": "test-results/playwright/test_regime-regime-strip-renders-all-dimensions/trace.zip",
+      "sha256": "ecccacc1a2adac317a2bded96d04955e6d054172730db256d201b750685147f4",
+      "size": 326669
+    },
+    {
+      "path": "test-results/playwright/test_regime-regime-strip-renders-all-dimensions/video.webm",
+      "sha256": "d6d2deebb3d34b08f387b40b43c28a662031b7d26d684eca84e8d0085f54f235",
+      "size": 60632
+    },
+    {
+      "path": "test-results/playwright/test_research_flow-research-flow-query-to-complete-brief/test-finished-1.png",
+      "sha256": "2e87fd62305849286572e4adca7686343ec3e0d5edbc16deba89aaa3acd4e4d6",
+      "size": 71459
+    },
+    {
+      "path": "test-results/playwright/test_research_flow-research-flow-query-to-complete-brief/trace.zip",
+      "sha256": "54cae1fe4ab2e7685dc2ec392b998bfa011a1e25f9846ab787668b5c58dacc12",
+      "size": 3381477
+    },
+    {
+      "path": "test-results/playwright/test_research_flow-research-flow-query-to-complete-brief/video.webm",
+      "sha256": "387055cb2e0b4267fd9578aa36afb0642fdae3ac2a677beee92510e21e020360",
+      "size": 369876
+    },
+    {
+      "path": "test-results/playwright/test_screener-screener-loads-sorts-filters-opens-drawer/test-finished-1.png",
+      "sha256": "7fc866c74ebeca97486511e66e835214152a5a18e828bc69be4a2ca93090b3e9",
+      "size": 199876
+    },
+    {
+      "path": "test-results/playwright/test_screener-screener-loads-sorts-filters-opens-drawer/trace.zip",
+      "sha256": "f3275bd12f27f1b3191d5fccb07b5599458dd6da1b231e2d7cb617031bb79de2",
+      "size": 810135
+    },
+    {
+      "path": "test-results/playwright/test_screener-screener-loads-sorts-filters-opens-drawer/video.webm",
+      "sha256": "6ed29dd29196a0c639dca282fc6570b3ce833c77002c4535f63349d912bdd9c5",
+      "size": 88043
+    },
+    {
+      "path": "test-results/playwright/test_smoke-smoke-homepage-chrome-renders/test-finished-1.png",
+      "sha256": "9810c1c3c851733ab856dd68dd7a70257b5f45713b3ac65798af418429f6a6d0",
+      "size": 39398
+    },
+    {
+      "path": "test-results/playwright/test_smoke-smoke-homepage-chrome-renders/trace.zip",
+      "sha256": "4e563843d5ccedd4c9d915a10328d45c583187388611ae01ed290d518f7e65e0",
+      "size": 350141
+    },
+    {
+      "path": "test-results/playwright/test_smoke-smoke-homepage-chrome-renders/video.webm",
+      "sha256": "05872cd8859709efadebc1d1d3165641a9d304df89aec4009a7943e0b0bf7b6d",
+      "size": 60174
+    },
+    {
+      "path": "test-results/playwright/test_workspace_persistence-9f535-tegrity-export-and-continue/test-finished-1.png",
+      "sha256": "334351b0e02af0d75f9f6416cc4285d9ce5e282a13c1c615b8bdeea2b290259a",
+      "size": 52673
+    },
+    {
+      "path": "test-results/playwright/test_workspace_persistence-9f535-tegrity-export-and-continue/trace.zip",
+      "sha256": "4af73dd32eaad863137b7ed00e9ac63e0c776f9bf36cdb5400d39d5f27dbc1fa",
+      "size": 5396289
+    },
+    {
+      "path": "test-results/playwright/test_workspace_persistence-9f535-tegrity-export-and-continue/video.webm",
+      "sha256": "b050ed6c59a3dcac0d9714ad6fd69f6ed2338d1588b8d087d4914b14222dff9d",
+      "size": 594288
+    },
+    {
+      "path": "test-results/typescript.log",
+      "sha256": "a2e5b34914a7ba10ef8ca37852de53a05b8ac0a735506d4e55af30b3a30eba4e",
+      "size": 126
+    }
+  ]
+}
