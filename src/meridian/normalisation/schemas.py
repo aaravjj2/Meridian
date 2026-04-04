@@ -295,3 +295,66 @@ class MispricingScore(BaseModel):
     explanation: str
     confidence: int = Field(ge=1, le=5)
     scored_at: str
+
+
+class ResearchCollection(BaseModel):
+    id: str
+    title: str = Field(min_length=1, max_length=120)
+    summary: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=2000)
+    session_ids: list[str] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
+    collection_signature: str
+
+    @field_validator("id")
+    @classmethod
+    def ensure_id(cls, value: str) -> str:
+        collection_id = value.strip()
+        if not collection_id.startswith("coll-"):
+            raise ValueError("id must start with 'coll-'")
+        return collection_id
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("summary", "notes")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class ResearchCollectionSummary(BaseModel):
+    id: str
+    title: str
+    summary: str | None = None
+    session_count: int
+    created_at: str
+    updated_at: str
+    collection_signature: str
+
+
+class CreateCollectionRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    summary: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class UpdateCollectionRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    summary: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class AddSessionToCollectionRequest(BaseModel):
+    session_id: str = Field(min_length=4)
+    position: int | None = Field(default=None, ge=0)
+
+
+class ReorderCollectionSessionsRequest(BaseModel):
+    session_ids: list[str] = Field(min_length=1)
