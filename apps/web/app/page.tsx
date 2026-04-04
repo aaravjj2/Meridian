@@ -12,6 +12,7 @@ import TracePanel from '@/components/Terminal/TracePanel'
 import WorkspacePanel from '@/components/Terminal/WorkspacePanel'
 import type {
   EvidenceNavigationState,
+  ResearchEvaluationReport,
   ResearchBrief,
   SessionComparison,
   SessionIntegrityReport,
@@ -28,6 +29,7 @@ type SaveResearchSessionRequest = {
   brief: ResearchBrief
   trace_events: TraceEvent[]
   evidence_state: EvidenceNavigationState | null
+  evaluation?: ResearchEvaluationReport | null
 }
 
 type ListSavedSessionsOptions = {
@@ -519,6 +521,7 @@ export default function HomePage() {
   const [integrityReport, setIntegrityReport] = useState<SessionIntegrityReport | null>(null)
   const [integrityOverview, setIntegrityOverview] = useState<{ count: number; issueCount: number } | null>(null)
   const [evidenceState, setEvidenceState] = useState<EvidenceNavigationState>(EMPTY_EVIDENCE_STATE)
+  const [evaluation, setEvaluation] = useState<ResearchEvaluationReport | null>(null)
   const [evidenceHydrationKey, setEvidenceHydrationKey] = useState(0)
 
   const canSaveCurrent = briefState === 'complete' && !!brief && traceSteps.length > 0 && !running
@@ -589,6 +592,7 @@ export default function HomePage() {
           brief,
           trace_events: traceSteps,
           evidence_state: evidenceState,
+          evaluation,
         }
 
         const saved = await saveSession(payload)
@@ -612,7 +616,7 @@ export default function HomePage() {
         setSaveBusy(false)
       }
     },
-    [brief, canSaveCurrent, evidenceState, lastQuery, loadWorkspaceSessions, sessionId, traceSteps]
+    [brief, canSaveCurrent, evaluation, evidenceState, lastQuery, loadWorkspaceSessions, sessionId, traceSteps]
   )
 
   const reopenSession = useCallback(async (savedId: string) => {
@@ -629,6 +633,7 @@ export default function HomePage() {
       setQueryHistory((previous) => [...previous, saved.question].slice(-6))
       setFollowUpHint(saved.follow_up_context ?? null)
       setEvidenceState(saved.evidence_state ?? EMPTY_EVIDENCE_STATE)
+      setEvaluation(saved.evaluation ?? null)
       setEvidenceHydrationKey((previous) => previous + 1)
       setActiveSavedSessionId(saved.id)
       setComparisonResult(null)
@@ -821,6 +826,7 @@ export default function HomePage() {
     setBriefState('loading')
     setActiveSavedSessionId(null)
     setEvidenceState(EMPTY_EVIDENCE_STATE)
+    setEvaluation(null)
     setEvidenceHydrationKey((previous) => previous + 1)
     setWorkspaceStatus(null)
 
@@ -839,6 +845,7 @@ export default function HomePage() {
 
         if (step.type === 'complete' && step.brief) {
           setBrief(step.brief)
+          setEvaluation(step.evaluation ?? null)
           setBriefState('complete')
           setQueryHistory((prev) => [...prev, question].slice(-6))
           if (step.brief.follow_up_context) {
@@ -863,6 +870,7 @@ export default function HomePage() {
       }
       const fallback = fallbackBrief(question, priorQuestion)
       setBrief(fallback)
+      setEvaluation(null)
       setBriefState('complete')
       setSessionId((prev) => prev ?? 'local-demo')
       setQueryHistory((prev) => [...prev, question].slice(-6))
@@ -951,6 +959,7 @@ export default function HomePage() {
             <ResearchPanel
               status={briefState}
               brief={brief}
+              evaluation={evaluation}
               errorMessage={error}
               initialEvidenceState={evidenceState}
               evidenceHydrationKey={evidenceHydrationKey}

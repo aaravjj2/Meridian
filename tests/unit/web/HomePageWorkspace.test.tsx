@@ -87,6 +87,8 @@ const savedSummary = {
   saved_at: '2026-04-03T10:05:00Z',
   updated_at: '2026-04-03T10:05:00Z',
   canonical_signature: 'abc123',
+  evaluation_passed: true,
+  evaluation_signature: 'eval-abc123',
 } as const
 
 const savedSummaryTwo = {
@@ -102,6 +104,8 @@ const savedSummaryTwo = {
   saved_at: '2026-04-03T10:06:00Z',
   updated_at: '2026-04-03T10:06:00Z',
   canonical_signature: 'def456',
+  evaluation_passed: true,
+  evaluation_signature: 'eval-def456',
 } as const
 
 const savedRecord = {
@@ -128,6 +132,20 @@ const savedRecord = {
   evidence_state: {
     active_claim_id: 'bull-1-inversion-easing',
     expanded_source_id: 'fred:T10Y2Y',
+  },
+  evaluation: {
+    version: 'phase-6',
+    deterministic_signature: 'eval-abc123',
+    passed: true,
+    checks: [
+      {
+        check_id: 'claim_source_coverage',
+        passed: true,
+        detail: 'all linked',
+        value: '7/7',
+      },
+    ],
+    metrics: { source_count: 3 },
   },
   created_at: '2026-04-03T10:00:00Z',
   updated_at: '2026-04-03T10:05:00Z',
@@ -173,6 +191,20 @@ const savedRecordTwo = {
   evidence_state: {
     active_claim_id: 'bull-2-disinflation-progress',
     expanded_source_id: 'fred:CPIAUCSL',
+  },
+  evaluation: {
+    version: 'phase-6',
+    deterministic_signature: 'eval-def456',
+    passed: true,
+    checks: [
+      {
+        check_id: 'claim_source_coverage',
+        passed: true,
+        detail: 'all linked',
+        value: '7/7',
+      },
+    ],
+    metrics: { source_count: 3 },
   },
   created_at: '2026-04-03T10:06:00Z',
   updated_at: '2026-04-03T10:06:00Z',
@@ -269,6 +301,7 @@ describe('HomePage workspace persistence', () => {
     render(<HomePage />)
 
     expect(await screen.findByTestId('workspace-item-0')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-evaluation-0')).toHaveTextContent('Eval PASS')
     expect(screen.getByTestId('workspace-export-current-json')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-export-current-markdown')).toBeInTheDocument()
 
@@ -365,6 +398,11 @@ describe('HomePage workspace persistence', () => {
           trace_step_order_valid: true,
           trace_step_unique: true,
           evidence_state_valid: true,
+          provenance_complete: true,
+          freshness_valid: true,
+          evaluation_present: true,
+          evaluation_valid: true,
+          evaluation_signature: 'eval-abc123',
           issues: [],
           checked_at: '2026-04-03T10:10:00Z',
           provenance: {},
@@ -382,6 +420,11 @@ describe('HomePage workspace persistence', () => {
               trace_step_order_valid: true,
               trace_step_unique: true,
               evidence_state_valid: true,
+              provenance_complete: true,
+              freshness_valid: true,
+              evaluation_present: true,
+              evaluation_valid: true,
+              evaluation_signature: 'eval-abc123',
               issues: [],
               checked_at: '2026-04-03T10:10:00Z',
               provenance: {},
@@ -395,6 +438,11 @@ describe('HomePage workspace persistence', () => {
               trace_step_order_valid: true,
               trace_step_unique: true,
               evidence_state_valid: true,
+              provenance_complete: true,
+              freshness_valid: true,
+              evaluation_present: true,
+              evaluation_valid: true,
+              evaluation_signature: 'eval-def456',
               issues: [],
               checked_at: '2026-04-03T10:10:00Z',
               provenance: {},
@@ -430,6 +478,8 @@ describe('HomePage workspace persistence', () => {
 
     fireEvent.click(screen.getByTestId('workspace-verify-0'))
     expect(await screen.findByTestId('workspace-integrity-report')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-integrity-provenance')).toHaveTextContent('complete')
+    expect(screen.getByTestId('workspace-integrity-evaluation')).toHaveTextContent('valid')
 
     fireEvent.click(screen.getByTestId('workspace-integrity-run-all'))
     expect(await screen.findByTestId('workspace-integrity-overview')).toHaveTextContent('Checked 2 sessions')

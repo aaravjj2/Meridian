@@ -13,6 +13,7 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await page.getByTestId('save-session-button').click()
   await expect(page.getByTestId('workspace-status')).toContainText('Saved session', { timeout: 15000 })
   await expect(page.getByTestId('workspace-item-0')).toBeVisible()
+  await expect(page.getByTestId('workspace-evaluation-0')).toBeVisible()
 
   await page.getByTestId('query-input').fill('Continue from this session with an event-probability perspective.')
   await page.getByTestId('query-input').press('Enter')
@@ -33,6 +34,8 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
 
   await page.getByTestId('workspace-verify-0').click()
   await expect(page.getByTestId('workspace-integrity-report')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByTestId('workspace-integrity-provenance')).toBeVisible()
+  await expect(page.getByTestId('workspace-integrity-evaluation')).toBeVisible()
   await page.getByTestId('workspace-integrity-run-all').click()
   await expect(page.getByTestId('workspace-integrity-overview')).toBeVisible({ timeout: 10000 })
 

@@ -73,12 +73,16 @@ def test_workspace_save_list_get_and_export_roundtrip() -> None:
     assert saved["mode"] == "demo"
     assert saved["session_id"] == thread_id
     assert saved["canonical_signature"]
+    assert saved["brief"]["provenance_summary"]["source_count"] >= 3
+    assert saved["evaluation"]["version"] == "phase-6"
+    assert saved["evaluation"]["passed"] is True
 
     listed = client.get("/api/v1/research/sessions")
     assert listed.status_code == 200
     listing = listed.json()
     assert listing["count"] == 1
     assert listing["sessions"][0]["id"] == saved["id"]
+    assert listing["sessions"][0]["evaluation_passed"] is True
 
     loaded = client.get(f"/api/v1/research/sessions/{saved['id']}")
     assert loaded.status_code == 200
@@ -136,6 +140,10 @@ def test_workspace_saved_session_signature_is_deterministic_for_demo_runs() -> N
     assert saved_b.status_code == 200
 
     assert saved_a.json()["canonical_signature"] == saved_b.json()["canonical_signature"]
+    assert (
+        saved_a.json()["evaluation"]["deterministic_signature"]
+        == saved_b.json()["evaluation"]["deterministic_signature"]
+    )
 
 
 def test_workspace_continue_from_saved_restores_followup_context() -> None:
@@ -251,6 +259,10 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
     integrity_payload = integrity_single.json()
     assert integrity_payload["id"] == first_id
     assert integrity_payload["signature_valid"] is True
+    assert integrity_payload["provenance_complete"] is True
+    assert integrity_payload["freshness_valid"] is True
+    assert integrity_payload["evaluation_present"] is True
+    assert integrity_payload["evaluation_valid"] is True
     assert integrity_payload["issues"] == []
 
     integrity_all = client.get("/api/v1/research/sessions/integrity", params={"include_archived": "true"})
@@ -262,9 +274,10 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
     assert bundle_response.status_code == 200
     assert "application/json" in bundle_response.headers["content-type"]
     bundle_payload = bundle_response.json()
-    assert bundle_payload["bundle_version"] == "phase-5"
+    assert bundle_payload["bundle_version"] == "phase-6"
     assert bundle_payload["session"]["id"] == first_id
     assert bundle_payload["integrity"]["signature_valid"] is True
+    assert bundle_payload["evaluation"]["version"] == "phase-6"
 
     deleted = client.delete(f"/api/v1/research/sessions/{first_id}")
     assert deleted.status_code == 200

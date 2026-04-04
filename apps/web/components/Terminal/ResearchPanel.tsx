@@ -3,11 +3,17 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import SeriesChart from '../Charts/SeriesChart'
-import type { EvidenceNavigationState, ResearchBrief, SourceItem } from './types'
+import type {
+  EvidenceNavigationState,
+  ResearchBrief,
+  ResearchEvaluationReport,
+  SourceItem,
+} from './types'
 
 type ResearchPanelProps = {
   status: 'empty' | 'loading' | 'error' | 'complete'
   brief: ResearchBrief | null
+  evaluation?: ResearchEvaluationReport | null
   errorMessage: string
   initialEvidenceState?: EvidenceNavigationState | null
   evidenceHydrationKey?: number
@@ -19,6 +25,13 @@ function sourceBadgeClass(type: string): string {
   if (type === 'edgar') return 'source-badge source-badge-edgar'
   if (type === 'news') return 'source-badge source-badge-news'
   return 'source-badge source-badge-market'
+}
+
+function freshnessBadgeClass(freshness: string): string {
+  if (freshness === 'fresh') return 'freshness-badge freshness-badge-fresh'
+  if (freshness === 'aging') return 'freshness-badge freshness-badge-aging'
+  if (freshness === 'stale') return 'freshness-badge freshness-badge-stale'
+  return 'freshness-badge freshness-badge-unknown'
 }
 
 const SAMPLE_SERIES = [
@@ -111,6 +124,7 @@ function SourcePreview({ source, idx }: { source: SourceItem; idx: number }) {
 export default function ResearchPanel({
   status,
   brief,
+  evaluation,
   errorMessage,
   initialEvidenceState,
   evidenceHydrationKey,
@@ -239,6 +253,13 @@ export default function ResearchPanel({
     return null
   }
 
+  const provenanceSummary =
+    brief.provenance_summary && typeof brief.provenance_summary === 'object' ? brief.provenance_summary : null
+  const freshnessCounts =
+    provenanceSummary && typeof provenanceSummary.freshness_counts === 'object'
+      ? (provenanceSummary.freshness_counts as Record<string, unknown>)
+      : null
+
   return (
     <div className="brief-complete" data-testid="brief-complete">
       <section className="brief-meta" data-testid="brief-meta">
@@ -340,6 +361,44 @@ export default function ResearchPanel({
         </section>
       ) : null}
 
+      {provenanceSummary ? (
+        <section className="brief-section" data-testid="provenance-summary">
+          <span className="block-label">PROVENANCE</span>
+          <p data-testid="provenance-captured-at">Captured at: {String(provenanceSummary.captured_at ?? 'n/a')}</p>
+          <p data-testid="provenance-source-count">Sources tracked: {String(provenanceSummary.source_count ?? brief.sources.length)}</p>
+          {freshnessCounts ? (
+            <div className="provenance-freshness-grid" data-testid="provenance-freshness-grid">
+              <span data-testid="provenance-freshness-fresh">Fresh: {String(freshnessCounts.fresh ?? 0)}</span>
+              <span data-testid="provenance-freshness-aging">Aging: {String(freshnessCounts.aging ?? 0)}</span>
+              <span data-testid="provenance-freshness-stale">Stale: {String(freshnessCounts.stale ?? 0)}</span>
+              <span data-testid="provenance-freshness-unknown">Unknown: {String(freshnessCounts.unknown ?? 0)}</span>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {evaluation ? (
+        <section className="brief-section" data-testid="evaluation-report">
+          <span className="block-label">EVALUATION</span>
+          <p data-testid="evaluation-status">Status: {evaluation.passed ? 'PASS' : 'FAIL'}</p>
+          <p className="evaluation-signature" data-testid="evaluation-signature">
+            Signature: {evaluation.deterministic_signature}
+          </p>
+          <div className="evaluation-checks">
+            {evaluation.checks.map((check, idx) => (
+              <div
+                key={`${check.check_id}-${idx}`}
+                className={check.passed ? 'evaluation-check evaluation-check-pass' : 'evaluation-check evaluation-check-fail'}
+                data-testid={`evaluation-check-${idx}`}
+              >
+                <strong>{check.check_id}</strong>
+                <span>{check.detail}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {brief.signal_conflicts && brief.signal_conflicts.length > 0 ? (
         <section className="brief-section" data-testid="signal-conflicts">
           <span className="block-label">SIGNAL CONFLICTS</span>
@@ -415,6 +474,12 @@ export default function ResearchPanel({
                 <span className={sourceBadgeClass(source.type)}>{source.type.toUpperCase()}</span>
                 <span className="source-id">{source.id}</span>
                 <span className="source-excerpt">{source.excerpt}</span>
+                <span
+                  className={freshnessBadgeClass(source.provenance?.freshness ?? 'unknown')}
+                  data-testid={`source-freshness-${idx}`}
+                >
+                  {(source.provenance?.freshness ?? 'unknown').toUpperCase()}
+                </span>
               </button>
               {source.claim_refs && source.claim_refs.length > 0 ? (
                 <div className="source-claims" data-testid={`source-claims-${idx}`}>

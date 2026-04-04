@@ -59,12 +59,39 @@ class RiskPoint(ClaimBase):
     risk: str
 
 
+class SourceProvenance(BaseModel):
+    source_ref: str
+    tool_name: str
+    mode: Literal["demo", "live"]
+    observed_at: str | None = None
+    captured_at: str
+    freshness: Literal["fresh", "aging", "stale", "unknown"] = "unknown"
+    freshness_hours: float | None = None
+    deterministic: bool = False
+
+
 class SourceRef(BaseModel):
     type: Literal["fred", "edgar", "news", "market"]
     id: str
     excerpt: str
     claim_refs: list[str] = Field(default_factory=list)
     preview: dict[str, Any] | None = None
+    provenance: SourceProvenance | None = None
+
+
+class ResearchEvaluationCheck(BaseModel):
+    check_id: str
+    passed: bool
+    detail: str
+    value: float | int | str | None = None
+
+
+class ResearchEvaluationReport(BaseModel):
+    version: str = "phase-6"
+    deterministic_signature: str
+    passed: bool
+    checks: list[ResearchEvaluationCheck] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
 
 
 class SignalConflict(BaseModel):
@@ -97,6 +124,7 @@ class ResearchBrief(BaseModel):
     methodology_summary: str | None = None
     sources: list[SourceRef]
     signal_conflicts: list[SignalConflict] = Field(default_factory=list)
+    provenance_summary: dict[str, Any] | None = None
     created_at: str
     trace_steps: list[int] = Field(default_factory=list)
 

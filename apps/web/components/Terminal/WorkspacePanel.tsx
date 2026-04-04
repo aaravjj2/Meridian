@@ -275,6 +275,20 @@ export default function WorkspacePanel({
             <p>
               {integrityReport.id}: {integrityReport.signature_valid ? 'signature ok' : 'signature mismatch'}
             </p>
+            <p data-testid="workspace-integrity-provenance">
+              Provenance: {integrityReport.provenance_complete ? 'complete' : 'missing metadata'}
+            </p>
+            <p data-testid="workspace-integrity-freshness">
+              Freshness: {integrityReport.freshness_valid ? 'resolved' : 'unknown present'}
+            </p>
+            <p data-testid="workspace-integrity-evaluation">
+              Evaluation:{' '}
+              {integrityReport.evaluation_present
+                ? integrityReport.evaluation_valid
+                  ? 'valid'
+                  : 'signature mismatch'
+                : 'missing'}
+            </p>
             <p>Issues: {integrityReport.issues.length === 0 ? 'none' : integrityReport.issues.join('; ')}</p>
           </div>
         ) : null}
@@ -316,6 +330,18 @@ export default function WorkspacePanel({
                 {session.label ? <p className="workspace-item-label">{session.label}</p> : null}
                 <p className="workspace-item-question">{session.question}</p>
                 <p className="workspace-item-meta">Thread {session.session_id}</p>
+                {session.evaluation_passed !== undefined && session.evaluation_passed !== null ? (
+                  <p
+                    className={
+                      session.evaluation_passed
+                        ? 'workspace-item-evaluation workspace-item-evaluation-pass'
+                        : 'workspace-item-evaluation workspace-item-evaluation-fail'
+                    }
+                    data-testid={`workspace-evaluation-${idx}`}
+                  >
+                    Eval {session.evaluation_passed ? 'PASS' : 'FAIL'}
+                  </p>
+                ) : null}
                 {session.archived ? (
                   <p className="workspace-item-archived" data-testid={`workspace-archived-${idx}`}>
                     Archived

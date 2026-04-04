@@ -22,8 +22,9 @@
 - `key_risks: list[{ claim_id, risk, source_ref }]` (>=2)
 - `confidence: int [1, 5]`
 - `confidence_rationale: str`
-- `sources: list[{ type, id, excerpt, claim_refs?, preview? }]`
+- `sources: list[{ type, id, excerpt, claim_refs?, preview?, provenance? }]`
 - `signal_conflicts: list[{ conflict_id, title, summary, severity, claim_refs, source_refs }]`
+- `provenance_summary: dict | null` (captured_at, mode, source_count, freshness_counts)
 - `created_at: str (ISO)`
 - `trace_steps: list[int]`
 
@@ -33,6 +34,25 @@ Validation notes:
 - Every claim must be linked from at least one `sources[].claim_refs` entry.
 - `signal_conflicts[].claim_refs` must reference valid `claim_id` values.
 - `signal_conflicts[].source_refs` uses `type:id` format (example: `fred:T10Y2Y`).
+
+## SourceProvenance
+
+- `source_ref: str` (`type:id`)
+- `tool_name: str`
+- `mode: "demo" | "live"`
+- `observed_at: str | null`
+- `captured_at: str`
+- `freshness: "fresh" | "aging" | "stale" | "unknown"`
+- `freshness_hours: float | null`
+- `deterministic: bool`
+
+## ResearchEvaluationReport
+
+- `version: str` (currently `phase-6`)
+- `deterministic_signature: str` (SHA256 over stable evaluation projection)
+- `passed: bool`
+- `checks: list[{ check_id, passed, detail, value? }]`
+- `metrics: dict[str, Any]`
 
 ## TraceStep
 
@@ -55,6 +75,7 @@ Validation notes:
 - `brief: ResearchBrief`
 - `trace_events: list[SavedTraceEvent]`
 - `evidence_state: { active_claim_id, expanded_source_id } | null`
+- `evaluation: ResearchEvaluationReport | null`
 - `archived: bool`
 - `archived_at: str | null`
 - `created_at: str (ISO)`
@@ -87,6 +108,11 @@ Canonical signature notes:
 - `trace_step_order_valid: bool`
 - `trace_step_unique: bool`
 - `evidence_state_valid: bool`
+- `provenance_complete: bool`
+- `freshness_valid: bool`
+- `evaluation_present: bool`
+- `evaluation_valid: bool`
+- `evaluation_signature: str | null`
 - `issues: list[str]`
 - `checked_at: str (ISO)`
 - `provenance: dict[str, Any]`
@@ -97,7 +123,8 @@ Canonical signature notes:
 - `exported_at: str (ISO)`
 - `session: SavedResearchSession`
 - `integrity: SessionIntegrityReport`
-- `provenance: { source, app_version, model, mode }`
+- `evaluation: ResearchEvaluationReport | null`
+- `provenance: { source, app_version, model, mode, freshness_counts, evaluation_signature }`
 
 ## MispricingScore
 

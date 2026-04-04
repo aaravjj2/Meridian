@@ -11,7 +11,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from meridian.normalisation.schemas import ResearchBrief
+from meridian.normalisation.schemas import (
+    ResearchBrief,
+    ResearchEvaluationCheck,
+    ResearchEvaluationReport,
+    SourceProvenance,
+)
 from meridian.settings import ROOT_DIR
 
 
@@ -20,6 +25,25 @@ QueryClass = Literal["macro_outlook", "event_probability", "ticker_macro"]
 
 def _iso_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _freshness_from_hours(hours: float | None) -> Literal["fresh", "aging", "stale", "unknown"]:
+    if hours is None:
+        return "unknown"
+    if hours <= 24 * 7:
+        return "fresh"
+    if hours <= 24 * 180:
+        return "aging"
+    return "stale"
 
 
 def _default_store_dir() -> Path:
@@ -64,6 +88,7 @@ class SaveResearchSessionRequest(BaseModel):
     brief: ResearchBrief
     trace_events: list[SavedTraceEvent] = Field(default_factory=list)
     evidence_state: EvidenceNavigationState | None = None
+    evaluation: ResearchEvaluationReport | None = None
 
     @field_validator("label")
     @classmethod
@@ -85,6 +110,7 @@ class SavedResearchSession(BaseModel):
     brief: ResearchBrief
     trace_events: list[SavedTraceEvent] = Field(default_factory=list)
     evidence_state: EvidenceNavigationState | None = None
+    evaluation: ResearchEvaluationReport | None = None
     archived: bool = False
     archived_at: str | None = None
     created_at: str
@@ -114,6 +140,8 @@ class SavedResearchSessionSummary(BaseModel):
     saved_at: str
     updated_at: str
     canonical_signature: str
+    evaluation_passed: bool | None = None
+    evaluation_signature: str | None = None
 
 
 class SessionComparison(BaseModel):
@@ -136,6 +164,11 @@ class SessionIntegrityReport(BaseModel):
     trace_step_order_valid: bool
     trace_step_unique: bool
     evidence_state_valid: bool
+    provenance_complete: bool
+    freshness_valid: bool
+    evaluation_present: bool
+    evaluation_valid: bool
+    evaluation_signature: str | None = None
     issues: list[str] = Field(default_factory=list)
     checked_at: str
     provenance: dict[str, Any] = Field(default_factory=dict)
@@ -166,6 +199,7 @@ class ResearchSessionStore:
         brief: ResearchBrief,
         trace_events: list[SavedTraceEvent],
         evidence_state: EvidenceNavigationState | None,
+        evaluation: ResearchEvaluationReport | None,
     ) -> dict[str, Any]:
         return {
             "question": question,
@@ -175,6 +209,7 @@ class ResearchSessionStore:
             "brief": brief.model_dump(),
             "trace_events": self._canonical_trace_events(trace_events),
             "evidence_state": evidence_state.model_dump(exclude_none=True) if evidence_state else None,
+            "evaluation": evaluation.model_dump(exclude_none=True) if evaluation else None,
         }
 
     def _hash_canonical_payload(self, canonical_payload: dict[str, Any]) -> str:
@@ -188,6 +223,7 @@ class ResearchSessionStore:
             brief=payload.brief,
             trace_events=payload.trace_events,
             evidence_state=payload.evidence_state,
+            evaluation=payload.evaluation,
         )
         return self._hash_canonical_payload(canonical_payload)
 
@@ -198,27 +234,251 @@ class ResearchSessionStore:
             brief=record.brief,
             trace_events=record.trace_events,
             evidence_state=record.evidence_state,
+            evaluation=record.evaluation,
         )
         return self._hash_canonical_payload(canonical_payload)
 
+    def _derive_observed_at(self, source: Any) -> str | None:
+        preview = source.preview or {}
+        points = preview.get("points") if isinstance(preview, dict) else None
+        if isinstance(points, list) and points:
+            last_point = points[-1]
+            if isinstance(last_point, dict):
+                date_value = last_point.get("date")
+                if isinstance(date_value, str) and date_value.strip():
+                    if "T" in date_value:
+                        return date_value
+                    return f"{date_value}T00:00:00Z"
+
+        if not isinstance(preview, dict):
+            return None
+
+        for key in ["last_updated", "updated_at", "as_of", "timestamp", "scored_at", "filed_date"]:
+            value = preview.get(key)
+            if isinstance(value, str) and value.strip():
+                if "T" in value:
+                    return value
+                return f"{value}T00:00:00Z"
+        return None
+
+    def _source_tool_name(self, source_type: str) -> str:
+        mapping = {
+            "fred": "fred_fetch",
+            "market": "prediction_market_fetch",
+            "news": "news_fetch",
+            "edgar": "edgar_fetch",
+        }
+        return mapping.get(source_type, "unknown")
+
+    def _compute_freshness(self, observed_at: str | None, captured_at: str) -> tuple[str, float | None]:
+        observed_dt = _parse_iso(observed_at)
+        captured_dt = _parse_iso(captured_at)
+        if observed_dt is None or captured_dt is None:
+            return "unknown", None
+
+        age_hours = max(0.0, (captured_dt - observed_dt).total_seconds() / 3600)
+        return _freshness_from_hours(age_hours), round(age_hours, 2)
+
+    def _enrich_brief_provenance(self, brief: ResearchBrief, mode: Literal["demo", "live"]) -> ResearchBrief:
+        enriched = brief.model_copy(deep=True)
+        captured_at = enriched.created_at or _iso_now()
+        freshness_counts: Counter[str] = Counter()
+        observed_candidates: list[datetime] = []
+
+        for source in enriched.sources:
+            source_ref = f"{source.type}:{source.id}"
+            existing = source.provenance.model_dump(exclude_none=True) if source.provenance else {}
+            observed_at = str(existing.get("observed_at") or self._derive_observed_at(source) or captured_at)
+            freshness, freshness_hours = self._compute_freshness(observed_at=observed_at, captured_at=captured_at)
+            mode_value = str(existing.get("mode") or mode)
+            if mode_value not in {"demo", "live"}:
+                mode_value = mode
+            freshness_value = str(existing.get("freshness") or freshness)
+            if freshness_value not in {"fresh", "aging", "stale", "unknown"}:
+                freshness_value = freshness
+
+            if observed_at:
+                parsed = _parse_iso(observed_at)
+                if parsed is not None:
+                    observed_candidates.append(parsed)
+
+            source.provenance = SourceProvenance(
+                source_ref=source_ref,
+                tool_name=str(existing.get("tool_name") or self._source_tool_name(source.type)),
+                mode=mode_value,
+                observed_at=observed_at,
+                captured_at=str(existing.get("captured_at") or captured_at),
+                freshness=freshness_value,
+                freshness_hours=existing.get("freshness_hours", freshness_hours),
+                deterministic=bool(existing.get("deterministic", mode == "demo")),
+            )
+            freshness_counts[source.provenance.freshness] += 1
+
+        oldest_observed_at = (
+            min(observed_candidates).isoformat().replace("+00:00", "Z") if observed_candidates else None
+        )
+        enriched.provenance_summary = {
+            "captured_at": captured_at,
+            "mode": mode,
+            "deterministic": mode == "demo",
+            "source_count": len(enriched.sources),
+            "freshness_counts": {
+                "fresh": freshness_counts.get("fresh", 0),
+                "aging": freshness_counts.get("aging", 0),
+                "stale": freshness_counts.get("stale", 0),
+                "unknown": freshness_counts.get("unknown", 0),
+            },
+            "oldest_observed_at": oldest_observed_at,
+        }
+        return enriched
+
+    def _claim_ids(self, brief: ResearchBrief) -> set[str]:
+        return {
+            *[item.claim_id for item in brief.bull_case],
+            *[item.claim_id for item in brief.bear_case],
+            *[item.claim_id for item in brief.key_risks],
+        }
+
+    def _build_evaluation(
+        self,
+        brief: ResearchBrief,
+        trace_events: list[SavedTraceEvent],
+        mode: Literal["demo", "live"],
+    ) -> ResearchEvaluationReport:
+        claim_ids = self._claim_ids(brief)
+        source_refs = [f"{source.type}:{source.id}" for source in brief.sources]
+        source_claim_refs = {
+            claim_ref
+            for source in brief.sources
+            for claim_ref in source.claim_refs
+        }
+
+        trace_steps = [event.step for event in trace_events]
+        trace_step_order_valid = all(
+            previous <= current for previous, current in zip(trace_steps, trace_steps[1:])
+        )
+        trace_step_unique = len(trace_steps) == len(set(trace_steps))
+
+        missing_provenance = [
+            f"{source.type}:{source.id}" for source in brief.sources if source.provenance is None
+        ]
+        stale_count = sum(
+            1
+            for source in brief.sources
+            if source.provenance is not None and source.provenance.freshness == "stale"
+        )
+        unknown_count = sum(
+            1
+            for source in brief.sources
+            if source.provenance is not None and source.provenance.freshness == "unknown"
+        )
+        deterministic_sources = sum(
+            1
+            for source in brief.sources
+            if source.provenance is not None and source.provenance.deterministic
+        )
+
+        checks = [
+            ResearchEvaluationCheck(
+                check_id="claim_source_coverage",
+                passed=claim_ids.issubset(source_claim_refs),
+                detail="Every claim_id is linked by at least one source claim_ref.",
+                value=f"{len(source_claim_refs)}/{len(claim_ids)}",
+            ),
+            ResearchEvaluationCheck(
+                check_id="provenance_attached",
+                passed=len(missing_provenance) == 0,
+                detail="Every source includes provenance metadata.",
+                value=len(brief.sources) - len(missing_provenance),
+            ),
+            ResearchEvaluationCheck(
+                check_id="trace_step_order",
+                passed=trace_step_order_valid and trace_step_unique,
+                detail="Trace steps are monotonic and unique.",
+                value=len(trace_steps),
+            ),
+            ResearchEvaluationCheck(
+                check_id="freshness_visibility",
+                passed=unknown_count == 0,
+                detail="Every source has a resolved freshness state.",
+                value=len(brief.sources) - unknown_count,
+            ),
+            ResearchEvaluationCheck(
+                check_id="deterministic_mode_alignment",
+                passed=(mode != "demo") or (deterministic_sources == len(brief.sources)),
+                detail="Demo mode sources should all be deterministic.",
+                value=deterministic_sources,
+            ),
+        ]
+
+        signature_payload = {
+            "mode": mode,
+            "query_class": brief.query_class,
+            "claim_ids": sorted(claim_ids),
+            "source_refs": sorted(source_refs),
+            "source_freshness": {
+                f"{source.type}:{source.id}": (
+                    source.provenance.freshness if source.provenance else "unknown"
+                )
+                for source in brief.sources
+            },
+            "trace_steps": trace_steps,
+            "trace_types": [event.type for event in trace_events],
+        }
+        deterministic_signature = self._hash_canonical_payload(signature_payload)
+
+        metrics = {
+            "claim_count": len(claim_ids),
+            "source_count": len(brief.sources),
+            "trace_event_count": len(trace_events),
+            "stale_source_count": stale_count,
+            "unknown_source_count": unknown_count,
+            "deterministic_source_count": deterministic_sources,
+        }
+
+        return ResearchEvaluationReport(
+            deterministic_signature=deterministic_signature,
+            passed=all(check.passed for check in checks),
+            checks=checks,
+            metrics=metrics,
+        )
+
     def _build_record(self, saved_id: str, payload: SaveResearchSessionRequest, timestamp: str) -> SavedResearchSession:
+        enriched_brief = self._enrich_brief_provenance(payload.brief, mode=payload.mode)
+        evaluation = self._build_evaluation(
+            brief=enriched_brief,
+            trace_events=payload.trace_events,
+            mode=payload.mode,
+        )
+        canonical_signature = self._hash_canonical_payload(
+            self._canonical_payload(
+                question=payload.question,
+                mode=payload.mode,
+                brief=enriched_brief,
+                trace_events=payload.trace_events,
+                evidence_state=payload.evidence_state,
+                evaluation=evaluation,
+            )
+        )
+
         return SavedResearchSession(
             id=saved_id,
             question=payload.question,
             mode=payload.mode,
             session_id=payload.session_id,
             label=payload.label,
-            query_class=payload.brief.query_class,
-            follow_up_context=payload.brief.follow_up_context,
-            brief=payload.brief,
+            query_class=enriched_brief.query_class,
+            follow_up_context=enriched_brief.follow_up_context,
+            brief=enriched_brief,
             trace_events=payload.trace_events,
             evidence_state=payload.evidence_state,
+            evaluation=evaluation,
             archived=False,
             archived_at=None,
-            created_at=payload.brief.created_at,
+            created_at=enriched_brief.created_at,
             saved_at=timestamp,
             updated_at=timestamp,
-            canonical_signature=self._compute_signature(payload),
+            canonical_signature=canonical_signature,
         )
 
     def _write_record(self, record: SavedResearchSession) -> None:
@@ -254,6 +514,8 @@ class ResearchSessionStore:
             saved_at=record.saved_at,
             updated_at=record.updated_at,
             canonical_signature=record.canonical_signature,
+            evaluation_passed=record.evaluation.passed if record.evaluation else None,
+            evaluation_signature=record.evaluation.deterministic_signature if record.evaluation else None,
         )
 
     def _matches_filters(
@@ -369,6 +631,11 @@ class ResearchSessionStore:
             ("follow_up_context", left.follow_up_context, right.follow_up_context),
             ("mode", left.mode, right.mode),
             ("archived", left.archived, right.archived),
+            (
+                "evaluation_signature",
+                left.evaluation.deterministic_signature if left.evaluation else None,
+                right.evaluation.deterministic_signature if right.evaluation else None,
+            ),
         ]
         metadata_diffs = [
             {
@@ -474,6 +741,28 @@ class ResearchSessionStore:
         trace_step_unique = len(trace_steps) == len(set(trace_steps))
         evidence_state_valid = self._evidence_state_valid(record)
 
+        sources_with_provenance = [source for source in record.brief.sources if source.provenance is not None]
+        provenance_complete = len(sources_with_provenance) == len(record.brief.sources)
+        freshness_counter = Counter(
+            source.provenance.freshness
+            for source in sources_with_provenance
+            if source.provenance is not None
+        )
+        freshness_valid = freshness_counter.get("unknown", 0) == 0
+
+        recomputed_evaluation = self._build_evaluation(
+            brief=record.brief,
+            trace_events=record.trace_events,
+            mode=record.mode,
+        )
+        evaluation_present = record.evaluation is not None
+        evaluation_valid = (
+            evaluation_present
+            and record.evaluation is not None
+            and record.evaluation.deterministic_signature == recomputed_evaluation.deterministic_signature
+            and record.evaluation.passed == recomputed_evaluation.passed
+        )
+
         issues: list[str] = []
         if record.canonical_signature != recomputed_signature:
             issues.append("canonical signature mismatch")
@@ -483,6 +772,14 @@ class ResearchSessionStore:
             issues.append("trace steps contain duplicates")
         if not evidence_state_valid:
             issues.append("evidence navigation state references missing claim/source")
+        if not provenance_complete:
+            issues.append("one or more sources are missing provenance metadata")
+        if not freshness_valid:
+            issues.append("one or more sources have unknown freshness state")
+        if not evaluation_present:
+            issues.append("evaluation report is missing")
+        elif not evaluation_valid:
+            issues.append("evaluation deterministic signature mismatch")
 
         return SessionIntegrityReport(
             id=record.id,
@@ -493,6 +790,11 @@ class ResearchSessionStore:
             trace_step_order_valid=trace_step_order_valid,
             trace_step_unique=trace_step_unique,
             evidence_state_valid=evidence_state_valid,
+            provenance_complete=provenance_complete,
+            freshness_valid=freshness_valid,
+            evaluation_present=evaluation_present,
+            evaluation_valid=evaluation_valid,
+            evaluation_signature=(record.evaluation.deterministic_signature if record.evaluation else None),
             issues=issues,
             checked_at=_iso_now(),
             provenance={
@@ -503,6 +805,13 @@ class ResearchSessionStore:
                 "created_at": record.created_at,
                 "updated_at": record.updated_at,
                 "archived": record.archived,
+                "freshness_counts": {
+                    "fresh": freshness_counter.get("fresh", 0),
+                    "aging": freshness_counter.get("aging", 0),
+                    "stale": freshness_counter.get("stale", 0),
+                    "unknown": freshness_counter.get("unknown", 0),
+                },
+                "evaluation_passed": record.evaluation.passed if record.evaluation else None,
             },
         )
 
@@ -532,16 +841,26 @@ class ResearchSessionStore:
 
     def export_bundle_payload(self, record: SavedResearchSession) -> dict[str, Any]:
         integrity = self.build_integrity_report(record)
+        freshness_counts = (
+            record.brief.provenance_summary.get("freshness_counts")
+            if isinstance(record.brief.provenance_summary, dict)
+            else None
+        )
         return {
-            "bundle_version": "phase-5",
+            "bundle_version": "phase-6",
             "exported_at": _iso_now(),
             "session": record.model_dump(),
             "integrity": integrity.model_dump(),
+            "evaluation": record.evaluation.model_dump() if record.evaluation else None,
             "provenance": {
                 "source": "meridian-workspace",
                 "app_version": "0.1.0",
                 "model": "glm-5.1",
                 "mode": record.mode,
+                "freshness_counts": freshness_counts,
+                "evaluation_signature": (
+                    record.evaluation.deterministic_signature if record.evaluation else None
+                ),
             },
         }
 
@@ -590,7 +909,11 @@ class ResearchSessionStore:
         lines.extend(["", "## Sources"])
         for source in record.brief.sources:
             claim_refs = ", ".join(source.claim_refs) if source.claim_refs else "none"
-            lines.append(f"- {source.type}:{source.id} | claims: {claim_refs} | {source.excerpt}")
+            freshness = source.provenance.freshness if source.provenance else "unknown"
+            observed_at = source.provenance.observed_at if source.provenance else "n/a"
+            lines.append(
+                f"- {source.type}:{source.id} | claims: {claim_refs} | freshness: {freshness} | observed_at: {observed_at} | {source.excerpt}"
+            )
 
         lines.extend(["", "## Signal Conflicts"])
         if record.brief.signal_conflicts:
@@ -599,6 +922,36 @@ class ResearchSessionStore:
                 lines.append(f"  - {conflict.summary}")
                 lines.append(f"  - claims: {', '.join(conflict.claim_refs)}")
                 lines.append(f"  - sources: {', '.join(conflict.source_refs)}")
+        else:
+            lines.append("- none")
+
+        lines.extend(
+            [
+                "",
+                "## Provenance Summary",
+            ]
+        )
+        if isinstance(record.brief.provenance_summary, dict) and record.brief.provenance_summary:
+            for key, value in record.brief.provenance_summary.items():
+                lines.append(f"- {key}: {value}")
+        else:
+            lines.append("- none")
+
+        lines.extend(
+            [
+                "",
+                "## Evaluation",
+            ]
+        )
+        if record.evaluation:
+            lines.append(f"- Version: {record.evaluation.version}")
+            lines.append(f"- Passed: {record.evaluation.passed}")
+            lines.append(f"- Deterministic signature: {record.evaluation.deterministic_signature}")
+            lines.append("- Checks:")
+            for check in record.evaluation.checks:
+                lines.append(
+                    f"  - {check.check_id}: {'pass' if check.passed else 'fail'} ({check.value}) - {check.detail}"
+                )
         else:
             lines.append("- none")
 

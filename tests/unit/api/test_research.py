@@ -70,6 +70,12 @@ def test_research_sse_stream_emits_complete() -> None:
     assert brief.thesis
     assert brief.query_class == "macro_outlook"
     assert len(brief.sources) >= 3
+    assert brief.provenance_summary is not None
+    assert all(source.provenance is not None for source in brief.sources)
+    assert isinstance(complete.get("provenance"), dict)
+    assert isinstance(complete.get("evaluation"), dict)
+    assert complete["evaluation"]["version"] == "phase-6"
+    assert complete["evaluation"]["passed"] is True
 
 
 def test_research_sse_contains_required_event_types() -> None:
@@ -149,5 +155,8 @@ def test_research_demo_output_is_deterministic_for_same_question() -> None:
 
     brief_a = events_a[-1]["brief"]
     brief_b = events_b[-1]["brief"]
+    eval_a = events_a[-1]["evaluation"]
+    eval_b = events_b[-1]["evaluation"]
 
     assert _brief_signature(brief_a) == _brief_signature(brief_b)
+    assert eval_a["deterministic_signature"] == eval_b["deterministic_signature"]

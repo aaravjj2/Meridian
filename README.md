@@ -201,7 +201,7 @@ Count convention used in proof and reporting: **test cases**.
 
 For exact latest gate counts and outcomes, use the newest manifest under:
 
-- `artifacts/proof/2026-04-04T02-10-42Z-phase-5-session-management/MANIFEST.md`
+- `artifacts/proof/<timestamp>-phase-6-provenance-eval/MANIFEST.md`
 - `artifacts/proof/<timestamp>-<slug>/MANIFEST.md`
 
 **Demo Mode Validation:**
@@ -229,7 +229,7 @@ Meridian demonstrates GLM-5.1's capabilities across real-world scenarios:
 4. **Regime Detection**: "What's the current macro regime across 5 dimensions?"
 5. **Screener Alerts**: "Show top 10 market-vs-model probability gaps"
 
-## Workspace Session Management (Phase 5)
+## Workspace Session Management (Phase 6)
 
 Meridian supports a single-user research workspace directly in the terminal flow with deterministic local persistence and audit tooling:
 
@@ -237,8 +237,10 @@ Meridian supports a single-user research workspace directly in the terminal flow
 - Search and filter saved sessions by text, query class, and archive visibility
 - Rename session labels, archive/unarchive sessions, and delete stale records
 - Compare any two saved sessions with structured metadata/claim/source/trace diffs
-- Run integrity checks that recompute canonical signatures and validate evidence references
-- Export saved sessions as JSON, Markdown, or self-contained bundle JSON
+- Surface source-level provenance and freshness in live research output and saved sessions
+- Generate deterministic evaluation checks with stable signatures for audit/replay confidence
+- Run integrity checks that recompute canonical signatures and validate evidence/provenance/evaluation references
+- Export saved sessions as JSON, Markdown, or self-contained bundle JSON including integrity + evaluation payloads
 - Continue from reopened sessions using the original runtime thread id
 
 Saved sessions are persisted locally under:

@@ -14,6 +14,8 @@ export type TraceEvent = {
   brief?: ResearchBrief
   duration_ms?: number
   message?: string
+  evaluation?: ResearchEvaluationReport
+  provenance?: Record<string, unknown>
   content?: {
     step?: number
     tools_used?: string[] | string
@@ -26,6 +28,32 @@ export type SourcePreview = {
   kind?: string
   points?: Array<{ date: string; value: number }>
   [key: string]: unknown
+}
+
+export type SourceProvenance = {
+  source_ref: string
+  tool_name: string
+  mode: 'demo' | 'live'
+  observed_at?: string | null
+  captured_at: string
+  freshness: 'fresh' | 'aging' | 'stale' | 'unknown'
+  freshness_hours?: number | null
+  deterministic: boolean
+}
+
+export type ResearchEvaluationCheck = {
+  check_id: string
+  passed: boolean
+  detail: string
+  value?: number | string | null
+}
+
+export type ResearchEvaluationReport = {
+  version: string
+  deterministic_signature: string
+  passed: boolean
+  checks: ResearchEvaluationCheck[]
+  metrics: Record<string, unknown>
 }
 
 export type BriefPoint = {
@@ -46,6 +74,7 @@ export type SourceItem = {
   excerpt: string
   claim_refs?: string[]
   preview?: SourcePreview
+  provenance?: SourceProvenance
 }
 
 export type SignalConflict = {
@@ -75,6 +104,7 @@ export type ResearchBrief = {
   methodology_summary?: string | null
   sources: SourceItem[]
   signal_conflicts?: SignalConflict[]
+  provenance_summary?: Record<string, unknown> | null
   created_at: string
   trace_steps: number[]
 }
@@ -92,12 +122,15 @@ export type SavedResearchSessionSummary = {
   saved_at: string
   updated_at?: string
   canonical_signature: string
+  evaluation_passed?: boolean | null
+  evaluation_signature?: string | null
 }
 
 export type SavedResearchSession = SavedResearchSessionSummary & {
   brief: ResearchBrief
   trace_events: TraceEvent[]
   evidence_state?: EvidenceNavigationState | null
+  evaluation?: ResearchEvaluationReport | null
   archived?: boolean
   archived_at?: string | null
   created_at: string
@@ -144,6 +177,11 @@ export type SessionIntegrityReport = {
   trace_step_order_valid: boolean
   trace_step_unique: boolean
   evidence_state_valid: boolean
+  provenance_complete: boolean
+  freshness_valid: boolean
+  evaluation_present: boolean
+  evaluation_valid: boolean
+  evaluation_signature?: string | null
   issues: string[]
   checked_at: string
   provenance: Record<string, unknown>

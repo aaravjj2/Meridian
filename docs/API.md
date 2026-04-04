@@ -95,7 +95,7 @@ Type-specific fields:
 - tool_result: tool, preview
 - reasoning: text
 - brief_delta: section, text
-- complete: brief, duration_ms, query_class, session_context_used
+- complete: brief, duration_ms, query_class, session_context_used, provenance, evaluation
 - error: message
 
 Brief payload additions in complete events:
@@ -106,7 +106,10 @@ Brief payload additions in complete events:
 - bull_case[].claim_id, bear_case[].claim_id, key_risks[].claim_id: stable claim identifiers
 - sources[].claim_refs: array of claim_id links for claim-to-source navigation
 - sources[].preview: structured preview metadata keyed by source type
+- sources[].provenance: source-level provenance metadata including freshness classification
+- provenance_summary: aggregate freshness/source-count metadata
 - signal_conflicts[]: contradiction metadata with conflict_id, title, summary, severity, claim_refs, source_refs
+- evaluation: deterministic quality checks with stable signature and metrics
 
 Semantics:
 
@@ -139,7 +142,9 @@ Response:
       "archived_at": null,
       "saved_at": "2026-04-03T23:59:59Z",
       "updated_at": "2026-04-03T23:59:59Z",
-      "canonical_signature": "<sha256>"
+      "canonical_signature": "<sha256>",
+      "evaluation_passed": true,
+      "evaluation_signature": "<sha256>"
     }
   ],
   "count": 1
@@ -165,6 +170,7 @@ Request body includes:
 - brief (full ResearchBrief payload)
 - trace_events (SSE-compatible trace payload)
 - evidence_state (active_claim_id, expanded_source_id)
+- evaluation (optional; server recomputes deterministic report for persistence)
 
 Response is the full saved session record including `id` and `canonical_signature`.
 
@@ -238,6 +244,14 @@ Query parameters:
 
 Response includes per-session `signature_valid`, trace ordering checks, evidence-state validity, and issue lists.
 
+Phase 6 integrity fields:
+
+- `provenance_complete`
+- `freshness_valid`
+- `evaluation_present`
+- `evaluation_valid`
+- `evaluation_signature`
+
 ### GET /api/v1/research/sessions/{saved_id}/integrity
 
 Runs integrity checks for a single saved session.
@@ -261,7 +275,8 @@ Exports a self-contained bundle JSON payload with:
 
 - full saved session record
 - integrity report (recomputed signature + structural checks)
-- provenance metadata (`source`, `app_version`, `model`, `mode`)
+- evaluation report (deterministic signature + checks)
+- provenance metadata (`source`, `app_version`, `model`, `mode`, `freshness_counts`, `evaluation_signature`)
 
 ### GET /api/v1/screener
 

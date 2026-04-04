@@ -120,4 +120,60 @@ describe('ResearchPanel', () => {
     expect(screen.getByTestId('bear-case-item-0')).toBeInTheDocument()
     expect(screen.getByTestId('key-risks-item-0')).toBeInTheDocument()
   })
+
+  it('renders provenance and evaluation sections when available', () => {
+    render(
+      <ResearchPanel
+        status="complete"
+        brief={{
+          ...brief,
+          provenance_summary: {
+            captured_at: '2026-04-02T00:00:00Z',
+            source_count: 3,
+            freshness_counts: {
+              fresh: 1,
+              aging: 2,
+              stale: 0,
+              unknown: 0,
+            },
+          },
+          sources: brief.sources.map((source) => ({
+            ...source,
+            provenance: {
+              source_ref: `${source.type}:${source.id}`,
+              tool_name: source.type === 'market' ? 'prediction_market_fetch' : 'fred_fetch',
+              mode: 'demo',
+              observed_at: '2026-03-01T00:00:00Z',
+              captured_at: '2026-04-02T00:00:00Z',
+              freshness: 'aging',
+              freshness_hours: 120,
+              deterministic: true,
+            },
+          })),
+        }}
+        evaluation={{
+          version: 'phase-6',
+          deterministic_signature: 'sig-123',
+          passed: true,
+          checks: [
+            {
+              check_id: 'claim_source_coverage',
+              passed: true,
+              detail: 'All claims are linked',
+              value: '7/7',
+            },
+          ],
+          metrics: {
+            source_count: 3,
+          },
+        }}
+        errorMessage=""
+      />
+    )
+
+    expect(screen.getByTestId('provenance-summary')).toBeInTheDocument()
+    expect(screen.getByTestId('evaluation-report')).toBeInTheDocument()
+    expect(screen.getByTestId('evaluation-signature')).toHaveTextContent('sig-123')
+    expect(screen.getByTestId('source-freshness-0')).toHaveTextContent('AGING')
+  })
 })
