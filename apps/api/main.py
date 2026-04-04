@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from apps.api.deps import get_mode, is_demo_mode
+from apps.api.routers.collections import router as collections_router
 from apps.api.routers.markets import router as markets_router
 from apps.api.routers.regime import router as regime_router
 from apps.api.routers.research import router as research_router
@@ -31,6 +32,7 @@ app.include_router(screener_router, prefix="/api/v1")
 app.include_router(regime_router, prefix="/api/v1")
 app.include_router(markets_router, prefix="/api/v1")
 app.include_router(workspace_router, prefix="/api/v1")
+app.include_router(collections_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")
