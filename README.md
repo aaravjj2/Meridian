@@ -252,6 +252,10 @@ Meridian supports a single-user research workspace directly in the terminal flow
 - Add/remove/reorder saved sessions inside each collection as an ordered timeline
 - Reopen timeline sessions directly from a collection while preserving brief/trace/provenance surfaces
 - Track deterministic `collection_signature` values for auditable collection state transitions
+- Inspect ordered thesis-evolution timelines for both collection timelines and per-thread saved sessions
+- Capture compact thesis-state snapshots per timeline entry (thesis/confidence/claims/freshness-policy/conflicts/evaluation)
+- Compute deterministic per-entry deltas versus the previous save (thesis/confidence/claims/freshness-policy/conflicts/evaluation)
+- Track deterministic timeline signatures for thread and collection evolution views
 
 Saved sessions and collections are persisted locally under:
 

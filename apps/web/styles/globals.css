@@ -315,7 +315,8 @@ a {
 
 .workspace-compare,
 .workspace-integrity,
-.workspace-recapture {
+.workspace-recapture,
+.workspace-thread-timeline {
   border: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--bg-elevated) 18%, transparent);
   padding: 8px;
@@ -511,6 +512,7 @@ a {
   color: var(--text-secondary);
   font-size: 11px;
   font-family: var(--font-mono), monospace;
+  word-break: break-word;
 }
 
 .workspace-state {

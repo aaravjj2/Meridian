@@ -6,6 +6,8 @@ import type {
   ResearchBrief,
   ResearchCollection,
   ResearchCollectionSummary,
+  ResearchThreadTimelineDetail,
+  ResearchThesisDelta,
   SavedResearchSessionSummary,
   SessionRecaptureLineage,
   SessionComparison,
@@ -38,6 +40,9 @@ type WorkspacePanelProps = {
   collections: ResearchCollectionSummary[]
   activeCollection: ResearchCollection | null
   collectionBusy: boolean
+  threadTimelineState: 'idle' | 'loading' | 'ready' | 'error'
+  threadTimelineError: string
+  threadTimeline: ResearchThreadTimelineDetail | null
   onSearchChange: (value: string) => void
   onToggleIncludeArchived: (value: boolean) => void
   onQueryClassFilterChange: (value: ResearchBrief['query_class'] | 'all') => void
@@ -52,6 +57,7 @@ type WorkspacePanelProps = {
   onCollectionAddActiveSession: () => void
   onCollectionRemoveSession: (sessionId: string) => void
   onCollectionReorderSession: (sessionId: string, direction: 'up' | 'down') => void
+  onThreadTimelineRefresh: () => void
   onSaveCurrent: () => void
   onExportCurrentJson: () => void
   onExportCurrentMarkdown: () => void
@@ -81,6 +87,33 @@ function savedAtLabel(value: string): string {
   return value.replace('T', ' ').replace('Z', ' UTC')
 }
 
+function compactText(value: string, limit = 140): string {
+  const normalized = value.trim()
+  if (normalized.length <= limit) {
+    return normalized
+  }
+  return `${normalized.slice(0, limit - 1)}...`
+}
+
+function thesisDeltaLabel(delta: ResearchThesisDelta | null | undefined): string {
+  if (!delta) {
+    return 'Delta unavailable.'
+  }
+  if (!delta.previous_session_id) {
+    return `Baseline save | sig ${delta.delta_signature}`
+  }
+
+  return [
+    `vs ${delta.previous_session_id}`,
+    `thesis ${delta.thesis_changed ? 'changed' : 'same'}`,
+    `confidence ${delta.confidence_changed ? 'changed' : 'same'}`,
+    `claims +${delta.claim_ids_added.length}/-${delta.claim_ids_removed.length}`,
+    `freshness dV/W ${delta.freshness_policy_violation_delta}/${delta.freshness_policy_warning_delta}`,
+    `conflicts +${delta.conflict_ids_added.length}/-${delta.conflict_ids_removed.length}`,
+    `evaluation ${delta.evaluation_changed ? 'changed' : 'same'}`,
+  ].join(' | ')
+}
+
 export default function WorkspacePanel({
   historyState,
   historyError,
@@ -107,6 +140,9 @@ export default function WorkspacePanel({
   collections,
   activeCollection,
   collectionBusy,
+  threadTimelineState,
+  threadTimelineError,
+  threadTimeline,
   onSearchChange,
   onToggleIncludeArchived,
   onQueryClassFilterChange,
@@ -118,6 +154,7 @@ export default function WorkspacePanel({
   onCollectionAddActiveSession,
   onCollectionRemoveSession,
   onCollectionReorderSession,
+  onThreadTimelineRefresh,
   onSaveCurrent,
   onExportCurrentJson,
   onExportCurrentMarkdown,
@@ -375,6 +412,9 @@ export default function WorkspacePanel({
             <p className="workspace-status" data-testid="workspace-collection-signature">
               Signature: {activeCollection.collection_signature}
             </p>
+            <p className="workspace-status" data-testid="workspace-collection-timeline-signature">
+              Timeline signature: {activeCollection.timeline_signature || 'n/a'}
+            </p>
             <div className="workspace-collections-edit-grid">
               <input
                 type="text"
@@ -427,6 +467,7 @@ export default function WorkspacePanel({
               <div className="workspace-collection-timeline" data-testid="workspace-collection-timeline">
                 {activeCollection.timeline.map((item, idx) => {
                   const label = item.label || item.question || item.session_id
+                  const thesisState = item.thesis_state
                   return (
                     <article
                       key={`${item.session_id}-${idx}`}
@@ -440,6 +481,21 @@ export default function WorkspacePanel({
                       <p className="workspace-item-meta">
                         {queryClassLabel(item.query_class)} | {item.evaluation_passed ? 'Eval PASS' : 'Eval n/a'}
                       </p>
+                      {thesisState ? (
+                        <p className="workspace-item-meta" data-testid={`workspace-collection-thesis-${idx}`}>
+                          Thesis: {compactText(thesisState.thesis, 120)} | conf {thesisState.confidence}/5 | claims{' '}
+                          {thesisState.claim_count} | freshness v/w {thesisState.freshness_policy_violation_count}/
+                          {thesisState.freshness_policy_warning_count} | conflicts {thesisState.conflict_count}
+                        </p>
+                      ) : null}
+                      {item.thesis_delta ? (
+                        <p
+                          className="workspace-item-snapshot-signature"
+                          data-testid={`workspace-collection-delta-${idx}`}
+                        >
+                          {thesisDeltaLabel(item.thesis_delta)}
+                        </p>
+                      ) : null}
                       <p className="workspace-item-snapshot-signature">
                         Snapshot sig: {item.snapshot_signature ?? 'n/a'}
                       </p>
@@ -484,6 +540,98 @@ export default function WorkspacePanel({
               </div>
             )}
           </div>
+        ) : null}
+      </div>
+
+      <div className="workspace-thread-timeline" data-testid="workspace-thread-timeline-panel">
+        <div className="workspace-collections-header">
+          <span className="block-label">THREAD TIMELINE</span>
+          <button
+            type="button"
+            data-testid="workspace-thread-timeline-refresh"
+            onClick={onThreadTimelineRefresh}
+            disabled={threadTimelineState === 'loading'}
+          >
+            {threadTimelineState === 'loading' ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+
+        {threadTimelineState === 'idle' ? (
+          <div className="workspace-state" data-testid="workspace-thread-timeline-idle">
+            Reopen or select a saved session to inspect thread evolution.
+          </div>
+        ) : null}
+
+        {threadTimelineState === 'loading' ? (
+          <div className="workspace-state" data-testid="workspace-thread-timeline-loading">
+            Loading thread timeline...
+          </div>
+        ) : null}
+
+        {threadTimelineState === 'error' ? (
+          <div className="workspace-state workspace-state-error" data-testid="workspace-thread-timeline-error">
+            {threadTimelineError || 'Failed to load thread timeline.'}
+          </div>
+        ) : null}
+
+        {threadTimelineState === 'ready' && threadTimeline ? (
+          <>
+            <p className="workspace-status" data-testid="workspace-thread-signature">
+              Thread {threadTimeline.thread_session_id} | timeline sig {threadTimeline.timeline_signature}
+            </p>
+            {threadTimeline.timeline.length === 0 ? (
+              <div className="workspace-state" data-testid="workspace-thread-timeline-empty">
+                No saved sessions in this thread yet.
+              </div>
+            ) : (
+              <div className="workspace-collection-timeline" data-testid="workspace-thread-timeline-list">
+                {threadTimeline.timeline.map((item, idx) => {
+                  const label = item.label || item.question || item.session_id
+                  const thesisState = item.thesis_state
+                  return (
+                    <article
+                      key={`thread-${item.session_id}-${idx}`}
+                      className="workspace-collection-timeline-item"
+                      data-testid={`workspace-thread-timeline-item-${idx}`}
+                    >
+                      <header className="workspace-collection-timeline-header">
+                        <strong>{label}</strong>
+                        <span>{savedAtLabel(item.saved_at || '')}</span>
+                      </header>
+                      <p className="workspace-item-meta">
+                        {queryClassLabel(item.query_class)} | {item.evaluation_passed ? 'Eval PASS' : 'Eval n/a'}
+                      </p>
+                      {thesisState ? (
+                        <p className="workspace-item-meta" data-testid={`workspace-thread-thesis-${idx}`}>
+                          Thesis: {compactText(thesisState.thesis, 120)} | conf {thesisState.confidence}/5 | claims{' '}
+                          {thesisState.claim_count} | freshness v/w {thesisState.freshness_policy_violation_count}/
+                          {thesisState.freshness_policy_warning_count} | conflicts {thesisState.conflict_count}
+                        </p>
+                      ) : null}
+                      {item.thesis_delta ? (
+                        <p className="workspace-item-snapshot-signature" data-testid={`workspace-thread-delta-${idx}`}>
+                          {thesisDeltaLabel(item.thesis_delta)}
+                        </p>
+                      ) : null}
+                      <p className="workspace-item-snapshot-signature">
+                        Snapshot sig: {item.snapshot_signature ?? 'n/a'}
+                      </p>
+                      <div className="workspace-item-actions">
+                        <button
+                          type="button"
+                          data-testid={`workspace-thread-reopen-${idx}`}
+                          disabled={!item.exists}
+                          onClick={() => onReopen(item.session_id)}
+                        >
+                          Reopen
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </>
         ) : null}
       </div>
 

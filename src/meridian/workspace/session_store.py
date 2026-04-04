@@ -13,8 +13,12 @@ from pydantic import BaseModel, Field, field_validator
 
 from meridian.normalisation.schemas import (
     ResearchBrief,
+    ResearchCollectionTimelineEntry,
     ResearchEvaluationCheck,
     ResearchEvaluationReport,
+    ResearchThesisDelta,
+    ResearchThesisStateSnapshot,
+    ResearchThreadTimelineDetail,
     SnapshotProvenance,
     SourceProvenance,
 )
@@ -1054,6 +1058,283 @@ class ResearchSessionStore:
             evaluation_signature=record.evaluation.deterministic_signature if record.evaluation else None,
             snapshot_kind_counts=snapshot_kind_counts,
             snapshot_signature=self._snapshot_signature(record.brief),
+        )
+
+    def _claim_ids_sorted(self, brief: ResearchBrief) -> list[str]:
+        return sorted(self._claim_ids(brief))
+
+    def _coerce_int_metric(self, value: Any) -> int:
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        if isinstance(value, str):
+            try:
+                return int(value.strip())
+            except ValueError:
+                return 0
+        return 0
+
+    def _thesis_state_snapshot(self, record: SavedResearchSession) -> ResearchThesisStateSnapshot:
+        claim_ids = self._claim_ids_sorted(record.brief)
+        conflict_ids = sorted(conflict.conflict_id for conflict in record.brief.signal_conflicts)
+
+        freshness_policy_violation_count = 0
+        freshness_policy_warning_count = 0
+        if record.evaluation and isinstance(record.evaluation.metrics, dict):
+            freshness_policy_violation_count = self._coerce_int_metric(
+                record.evaluation.metrics.get("freshness_policy_violation_count")
+            )
+            freshness_policy_warning_count = self._coerce_int_metric(
+                record.evaluation.metrics.get("freshness_policy_warning_count")
+            )
+        else:
+            freshness_policy = self._freshness_policy_summary(record.brief)
+            freshness_policy_violation_count = int(freshness_policy.get("violation_count", 0))
+            freshness_policy_warning_count = int(freshness_policy.get("warning_count", 0))
+
+        return ResearchThesisStateSnapshot(
+            thesis=record.brief.thesis,
+            confidence=record.brief.confidence,
+            claim_ids=claim_ids,
+            claim_count=len(claim_ids),
+            freshness_policy_violation_count=freshness_policy_violation_count,
+            freshness_policy_warning_count=freshness_policy_warning_count,
+            conflict_ids=conflict_ids,
+            conflict_count=len(conflict_ids),
+            evaluation_passed=record.evaluation.passed if record.evaluation else None,
+            evaluation_signature=(record.evaluation.deterministic_signature if record.evaluation else None),
+        )
+
+    def _thesis_delta(
+        self,
+        current: ResearchThesisStateSnapshot,
+        previous: ResearchThesisStateSnapshot | None,
+        previous_session_id: str | None,
+    ) -> ResearchThesisDelta:
+        if previous is None:
+            payload = {
+                "previous_session_id": None,
+                "thesis_changed": False,
+                "confidence_changed": False,
+                "claims_changed": False,
+                "claim_ids_added": [],
+                "claim_ids_removed": [],
+                "freshness_policy_changed": False,
+                "freshness_policy_violation_delta": 0,
+                "freshness_policy_warning_delta": 0,
+                "conflicts_changed": False,
+                "conflict_ids_added": [],
+                "conflict_ids_removed": [],
+                "evaluation_changed": False,
+                "evaluation_passed_changed": False,
+                "evaluation_signature_before": None,
+                "evaluation_signature_after": current.evaluation_signature,
+            }
+            return ResearchThesisDelta(
+                previous_session_id=None,
+                thesis_changed=False,
+                confidence_changed=False,
+                claims_changed=False,
+                claim_ids_added=[],
+                claim_ids_removed=[],
+                freshness_policy_changed=False,
+                freshness_policy_violation_delta=0,
+                freshness_policy_warning_delta=0,
+                conflicts_changed=False,
+                conflict_ids_added=[],
+                conflict_ids_removed=[],
+                evaluation_changed=False,
+                evaluation_passed_changed=False,
+                evaluation_signature_before=None,
+                evaluation_signature_after=current.evaluation_signature,
+                delta_signature=self._hash_canonical_payload(payload),
+            )
+
+        previous_claim_ids = set(previous.claim_ids)
+        current_claim_ids = set(current.claim_ids)
+        claim_ids_added = sorted(current_claim_ids - previous_claim_ids)
+        claim_ids_removed = sorted(previous_claim_ids - current_claim_ids)
+
+        previous_conflict_ids = set(previous.conflict_ids)
+        current_conflict_ids = set(current.conflict_ids)
+        conflict_ids_added = sorted(current_conflict_ids - previous_conflict_ids)
+        conflict_ids_removed = sorted(previous_conflict_ids - current_conflict_ids)
+
+        thesis_changed = current.thesis != previous.thesis
+        confidence_changed = current.confidence != previous.confidence
+        claims_changed = bool(claim_ids_added or claim_ids_removed)
+        freshness_policy_violation_delta = (
+            current.freshness_policy_violation_count - previous.freshness_policy_violation_count
+        )
+        freshness_policy_warning_delta = (
+            current.freshness_policy_warning_count - previous.freshness_policy_warning_count
+        )
+        freshness_policy_changed = (
+            freshness_policy_violation_delta != 0 or freshness_policy_warning_delta != 0
+        )
+        conflicts_changed = bool(conflict_ids_added or conflict_ids_removed)
+        evaluation_passed_changed = current.evaluation_passed != previous.evaluation_passed
+        evaluation_changed = (
+            evaluation_passed_changed
+            or current.evaluation_signature != previous.evaluation_signature
+        )
+
+        payload = {
+            "previous_session_id": previous_session_id,
+            "thesis_changed": thesis_changed,
+            "confidence_changed": confidence_changed,
+            "claims_changed": claims_changed,
+            "claim_ids_added": claim_ids_added,
+            "claim_ids_removed": claim_ids_removed,
+            "freshness_policy_changed": freshness_policy_changed,
+            "freshness_policy_violation_delta": freshness_policy_violation_delta,
+            "freshness_policy_warning_delta": freshness_policy_warning_delta,
+            "conflicts_changed": conflicts_changed,
+            "conflict_ids_added": conflict_ids_added,
+            "conflict_ids_removed": conflict_ids_removed,
+            "evaluation_changed": evaluation_changed,
+            "evaluation_passed_changed": evaluation_passed_changed,
+            "evaluation_signature_before": previous.evaluation_signature,
+            "evaluation_signature_after": current.evaluation_signature,
+        }
+
+        return ResearchThesisDelta(
+            previous_session_id=previous_session_id,
+            thesis_changed=thesis_changed,
+            confidence_changed=confidence_changed,
+            claims_changed=claims_changed,
+            claim_ids_added=claim_ids_added,
+            claim_ids_removed=claim_ids_removed,
+            freshness_policy_changed=freshness_policy_changed,
+            freshness_policy_violation_delta=freshness_policy_violation_delta,
+            freshness_policy_warning_delta=freshness_policy_warning_delta,
+            conflicts_changed=conflicts_changed,
+            conflict_ids_added=conflict_ids_added,
+            conflict_ids_removed=conflict_ids_removed,
+            evaluation_changed=evaluation_changed,
+            evaluation_passed_changed=evaluation_passed_changed,
+            evaluation_signature_before=previous.evaluation_signature,
+            evaluation_signature_after=current.evaluation_signature,
+            delta_signature=self._hash_canonical_payload(payload),
+        )
+
+    def _timeline_signature(self, timeline: list[ResearchCollectionTimelineEntry]) -> str:
+        payload = {
+            "timeline": [
+                {
+                    "session_id": entry.session_id,
+                    "exists": entry.exists,
+                    "label": entry.label,
+                    "question": entry.question,
+                    "query_class": entry.query_class,
+                    "saved_at": entry.saved_at,
+                    "evaluation_passed": entry.evaluation_passed,
+                    "snapshot_signature": entry.snapshot_signature,
+                    "archived": entry.archived,
+                    "thesis_state": (
+                        entry.thesis_state.model_dump(exclude_none=True)
+                        if entry.thesis_state
+                        else None
+                    ),
+                    "thesis_delta": (
+                        entry.thesis_delta.model_dump(exclude_none=True)
+                        if entry.thesis_delta
+                        else None
+                    ),
+                }
+                for entry in timeline
+            ]
+        }
+        return self._hash_canonical_payload(payload)
+
+    def _timeline_entry_from_record(
+        self,
+        record: SavedResearchSession,
+        previous_state: ResearchThesisStateSnapshot | None,
+        previous_session_id: str | None,
+    ) -> tuple[ResearchCollectionTimelineEntry, ResearchThesisStateSnapshot]:
+        current_state = self._thesis_state_snapshot(record)
+        current_delta = self._thesis_delta(current_state, previous_state, previous_session_id)
+        return (
+            ResearchCollectionTimelineEntry(
+                session_id=record.id,
+                exists=True,
+                label=record.label,
+                question=record.question,
+                query_class=record.query_class,
+                saved_at=record.saved_at,
+                evaluation_passed=record.evaluation.passed if record.evaluation else None,
+                snapshot_signature=self._snapshot_signature(record.brief),
+                archived=record.archived,
+                thesis_state=current_state,
+                thesis_delta=current_delta,
+            ),
+            current_state,
+        )
+
+    def build_collection_timeline(
+        self,
+        session_ids: list[str],
+    ) -> tuple[list[ResearchCollectionTimelineEntry], int, str]:
+        timeline: list[ResearchCollectionTimelineEntry] = []
+        missing_session_count = 0
+        previous_state: ResearchThesisStateSnapshot | None = None
+        previous_session_id: str | None = None
+
+        for saved_id in session_ids:
+            record = self.get(saved_id)
+            if record is None:
+                timeline.append(
+                    ResearchCollectionTimelineEntry(
+                        session_id=saved_id,
+                        exists=False,
+                    )
+                )
+                missing_session_count += 1
+                continue
+
+            entry, current_state = self._timeline_entry_from_record(
+                record=record,
+                previous_state=previous_state,
+                previous_session_id=previous_session_id,
+            )
+            timeline.append(entry)
+            previous_state = current_state
+            previous_session_id = record.id
+
+        return timeline, missing_session_count, self._timeline_signature(timeline)
+
+    def build_thread_timeline(
+        self,
+        session_id: str,
+        *,
+        include_archived: bool = True,
+    ) -> ResearchThreadTimelineDetail:
+        thread_records = [record for record in self._all_records() if record.session_id == session_id]
+        if not include_archived:
+            thread_records = [record for record in thread_records if not record.archived]
+        thread_records.sort(key=lambda item: item.saved_at)
+
+        timeline: list[ResearchCollectionTimelineEntry] = []
+        previous_state: ResearchThesisStateSnapshot | None = None
+        previous_session_id: str | None = None
+        for record in thread_records:
+            entry, current_state = self._timeline_entry_from_record(
+                record=record,
+                previous_state=previous_state,
+                previous_session_id=previous_session_id,
+            )
+            timeline.append(entry)
+            previous_state = current_state
+            previous_session_id = record.id
+
+        return ResearchThreadTimelineDetail(
+            thread_session_id=session_id,
+            timeline=timeline,
+            timeline_signature=self._timeline_signature(timeline),
         )
 
     def _matches_filters(

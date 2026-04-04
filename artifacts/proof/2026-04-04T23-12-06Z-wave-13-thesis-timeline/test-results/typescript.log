@@ -1,0 +1,14 @@
+$ npm run tsc
+
+--- STDOUT ---
+
+> tsc
+> tsc -p apps/web/tsconfig.json --noEmit
+
+
+
+--- STDERR ---
+
+
+exit_code=0
+duration_ms=1026

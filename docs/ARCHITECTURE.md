@@ -359,6 +359,11 @@ Wave 12 adds a parallel single-user collection store for ordered research notebo
 `data/processed/collections/`, with collection metadata (`title`, `summary`, `notes`) and
 ordered `session_ids` timeline linkage back to saved session records.
 
+Wave 13 extends workspace evolution observability with deterministic thesis timelines across
+both collection timelines and runtime thread histories. Each timeline entry now carries a compact
+thesis snapshot and a deterministic delta vs the previous save across thesis/confidence/claims/
+freshness-policy/conflicts/evaluation, plus a timeline-level signature for audit replay.
+
 ---
 
 ## Deployment Architecture

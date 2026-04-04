@@ -122,6 +122,23 @@ async def get_saved_session(saved_id: str) -> dict[str, object]:
     return saved.model_dump()
 
 
+@router.get("/research/sessions/{saved_id}/timeline")
+async def get_saved_session_timeline(
+    saved_id: str,
+    include_archived: bool = Query(default=True),
+) -> dict[str, object]:
+    store = get_session_store()
+    saved = store.get(saved_id)
+    if saved is None:
+        raise HTTPException(status_code=404, detail=f"Saved session not found: {saved_id}")
+
+    timeline = store.build_thread_timeline(
+        session_id=saved.session_id,
+        include_archived=include_archived,
+    )
+    return timeline.model_dump()
+
+
 @router.get("/research/sessions/{saved_id}/integrity")
 async def verify_saved_session_integrity(saved_id: str) -> dict[str, object]:
     store = get_session_store()

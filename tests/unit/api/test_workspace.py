@@ -231,6 +231,74 @@ def test_workspace_continue_from_saved_restores_followup_context() -> None:
     assert initial_question.lower() in continued_brief.follow_up_context.lower()
 
 
+def test_workspace_thread_timeline_returns_ordered_thesis_evolution() -> None:
+    thread_id = "wave13-thread-timeline"
+
+    first_question = "Set baseline macro thesis for this thread."
+    second_question = "Evolve the same thread into event probability framing."
+
+    first_events = _collect_events(question=first_question, session_id=thread_id)
+    second_events = _collect_events(question=second_question, session_id=thread_id)
+
+    first_saved_response = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=first_question,
+            session_id=thread_id,
+            events=first_events,
+            brief=first_events[-1]["brief"],
+        ),
+    )
+    second_saved_response = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=second_question,
+            session_id=thread_id,
+            events=second_events,
+            brief=second_events[-1]["brief"],
+        ),
+    )
+    assert first_saved_response.status_code == 200
+    assert second_saved_response.status_code == 200
+
+    first_saved = first_saved_response.json()
+    second_saved = second_saved_response.json()
+
+    timeline_response = client.get(f"/api/v1/research/sessions/{second_saved['id']}/timeline")
+    assert timeline_response.status_code == 200
+    timeline_payload = timeline_response.json()
+
+    assert timeline_payload["thread_session_id"] == thread_id
+    assert timeline_payload["timeline_signature"]
+    assert len(timeline_payload["timeline"]) == 2
+    assert [item["session_id"] for item in timeline_payload["timeline"]] == [
+        first_saved["id"],
+        second_saved["id"],
+    ]
+
+    first_entry = timeline_payload["timeline"][0]
+    second_entry = timeline_payload["timeline"][1]
+
+    assert first_entry["thesis_state"]["thesis"]
+    assert first_entry["thesis_state"]["claim_count"] >= 1
+    assert first_entry["thesis_delta"]["previous_session_id"] is None
+    assert first_entry["thesis_delta"]["delta_signature"]
+
+    assert second_entry["thesis_state"]["thesis"]
+    assert second_entry["thesis_delta"]["previous_session_id"] == first_saved["id"]
+    assert second_entry["thesis_delta"]["delta_signature"]
+    assert isinstance(second_entry["thesis_delta"]["thesis_changed"], bool)
+    assert isinstance(second_entry["thesis_delta"]["confidence_changed"], bool)
+    assert isinstance(second_entry["thesis_delta"]["claims_changed"], bool)
+    assert isinstance(second_entry["thesis_delta"]["freshness_policy_changed"], bool)
+    assert isinstance(second_entry["thesis_delta"]["conflicts_changed"], bool)
+    assert isinstance(second_entry["thesis_delta"]["evaluation_changed"], bool)
+
+    timeline_again = client.get(f"/api/v1/research/sessions/{second_saved['id']}/timeline")
+    assert timeline_again.status_code == 200
+    assert timeline_again.json()["timeline_signature"] == timeline_payload["timeline_signature"]
+
+
 def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
     first_question = "Assess recession odds over the next six months."
     second_question = "Update the same thread with an event-probability framing."

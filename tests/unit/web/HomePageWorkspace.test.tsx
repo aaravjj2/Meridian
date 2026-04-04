@@ -274,6 +274,7 @@ const collectionDetail = {
     updated_at: collectionSummary.updated_at,
     collection_signature: collectionSummary.collection_signature,
   },
+  timeline_signature: 'timeline-sig-collection-001',
   timeline: [
     {
       session_id: savedSummary.id,
@@ -285,9 +286,54 @@ const collectionDetail = {
       evaluation_passed: true,
       snapshot_signature: savedSummary.snapshot_signature,
       archived: false,
+      thesis_state: {
+        thesis: briefFixture.thesis,
+        confidence: briefFixture.confidence,
+        claim_ids: [
+          'bull-1-inversion-easing',
+          'bull-2-disinflation-progress',
+          'bull-3-easing-pricing-support',
+          'bear-1-inversion-still-warning',
+          'bear-2-credit-stress-elevated',
+          'risk-1-policy-repricing',
+          'risk-2-inflation-surprise',
+        ],
+        claim_count: 7,
+        freshness_policy_violation_count: 0,
+        freshness_policy_warning_count: 0,
+        conflict_ids: ['conflict-curve-interpretation'],
+        conflict_count: 1,
+        evaluation_passed: true,
+        evaluation_signature: 'eval-abc123',
+      },
+      thesis_delta: {
+        previous_session_id: null,
+        thesis_changed: false,
+        confidence_changed: false,
+        claims_changed: false,
+        claim_ids_added: [],
+        claim_ids_removed: [],
+        freshness_policy_changed: false,
+        freshness_policy_violation_delta: 0,
+        freshness_policy_warning_delta: 0,
+        conflicts_changed: false,
+        conflict_ids_added: [],
+        conflict_ids_removed: [],
+        evaluation_changed: false,
+        evaluation_passed_changed: false,
+        evaluation_signature_before: null,
+        evaluation_signature_after: 'eval-abc123',
+        delta_signature: 'delta-sig-baseline',
+      },
     },
   ],
   missing_session_count: 0,
+} as const
+
+const threadTimelineSingle = {
+  thread_session_id: savedSummary.session_id,
+  timeline_signature: 'thread-timeline-sig-001',
+  timeline: collectionDetail.timeline,
 } as const
 
 describe('HomePage workspace persistence', () => {
@@ -344,6 +390,7 @@ describe('HomePage workspace persistence', () => {
         }
         return HttpResponse.json(savedRecord)
       }),
+      http.get('/api/v1/research/sessions/:savedId/timeline', () => HttpResponse.json(threadTimelineSingle)),
       http.post('/api/v1/research/sessions', async ({ request }) => {
         saveCalls += 1
         const body = (await request.json()) as Record<string, unknown>
@@ -390,6 +437,9 @@ describe('HomePage workspace persistence', () => {
     fireEvent.click(screen.getByTestId('workspace-reopen-0'))
 
     expect(await screen.findByTestId('brief-complete')).toBeInTheDocument()
+    expect(await screen.findByTestId('workspace-thread-signature')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-thread-timeline-item-0')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-thread-delta-0')).toBeInTheDocument()
     expect(screen.getByTestId('trace-step-0')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('claim-link-bull-1-inversion-easing'))
     expect(screen.getByTestId('evidence-drilldown')).toBeInTheDocument()
@@ -668,6 +718,43 @@ describe('HomePage workspace persistence', () => {
         }
         return HttpResponse.json(savedRecord)
       }),
+      http.get('/api/v1/research/sessions/:savedId/timeline', ({ params }) => {
+        if (params.savedId === savedSummaryTwo.id) {
+          return HttpResponse.json({
+            thread_session_id: savedSummaryTwo.session_id,
+            timeline_signature: 'thread-timeline-sig-compare-2',
+            timeline: [
+              collectionDetail.timeline[0],
+              {
+                ...collectionDetail.timeline[0],
+                session_id: savedSummaryTwo.id,
+                label: savedSummaryTwo.label,
+                question: savedSummaryTwo.question,
+                query_class: savedSummaryTwo.query_class,
+                saved_at: savedSummaryTwo.saved_at,
+                snapshot_signature: savedSummaryTwo.snapshot_signature,
+                thesis_state: {
+                  ...collectionDetail.timeline[0].thesis_state,
+                  thesis: savedRecordTwo.brief.thesis,
+                  confidence: savedRecordTwo.brief.confidence,
+                  evaluation_signature: 'eval-def456',
+                },
+                thesis_delta: {
+                  ...collectionDetail.timeline[0].thesis_delta,
+                  previous_session_id: savedSummary.id,
+                  thesis_changed: true,
+                  confidence_changed: true,
+                  evaluation_changed: true,
+                  evaluation_signature_before: 'eval-abc123',
+                  evaluation_signature_after: 'eval-def456',
+                  delta_signature: 'delta-sig-thread-2',
+                },
+              },
+            ],
+          })
+        }
+        return HttpResponse.json(threadTimelineSingle)
+      }),
       http.get('/api/v1/collections', () => HttpResponse.json({ collections: [], count: 0 }))
     )
 
@@ -697,6 +784,8 @@ describe('HomePage workspace persistence', () => {
 
     fireEvent.click(screen.getByTestId('workspace-recapture-0'))
     expect(await screen.findByTestId('workspace-recapture-lineage')).toBeInTheDocument()
+    expect(await screen.findByTestId('workspace-thread-signature')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-thread-timeline-item-0')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-recapture-mode')).toHaveTextContent('demo_pseudo_refresh')
     expect(screen.getByTestId('workspace-recapture-snapshot-id-changes')).toHaveTextContent('3')
     expect(screen.getByTestId('workspace-recapture-transition-0')).toBeInTheDocument()
@@ -759,17 +848,62 @@ describe('HomePage workspace persistence', () => {
     const rebuildTimeline = () => {
       detail = {
         ...detail,
-        timeline: detail.collection.session_ids.map((sessionId) => ({
-          session_id: sessionId,
-          exists: true,
-          label: sessionById[sessionId].label ?? null,
-          question: sessionById[sessionId].question,
-          query_class: sessionById[sessionId].query_class,
-          saved_at: sessionById[sessionId].saved_at,
-          evaluation_passed: true,
-          snapshot_signature: sessionById[sessionId].snapshot_signature ?? null,
-          archived: false,
-        })),
+        timeline_signature: `timeline-sig-${detail.collection.session_ids.join('-') || 'empty'}`,
+        timeline: detail.collection.session_ids.map((sessionId: string, idx: number) => {
+          const record = fullRecordById[sessionId]
+          const previousSessionId = idx > 0 ? detail.collection.session_ids[idx - 1] : null
+          return {
+            session_id: sessionId,
+            exists: true,
+            label: sessionById[sessionId].label ?? null,
+            question: sessionById[sessionId].question,
+            query_class: sessionById[sessionId].query_class,
+            saved_at: sessionById[sessionId].saved_at,
+            evaluation_passed: true,
+            snapshot_signature: sessionById[sessionId].snapshot_signature ?? null,
+            archived: false,
+            thesis_state: {
+              thesis: record.brief.thesis,
+              confidence: record.brief.confidence,
+              claim_ids: [
+                'bull-1-inversion-easing',
+                'bull-2-disinflation-progress',
+                'bull-3-easing-pricing-support',
+                'bear-1-inversion-still-warning',
+                'bear-2-credit-stress-elevated',
+                'risk-1-policy-repricing',
+                'risk-2-inflation-surprise',
+              ],
+              claim_count: 7,
+              freshness_policy_violation_count: 0,
+              freshness_policy_warning_count: 0,
+              conflict_ids: ['conflict-curve-interpretation'],
+              conflict_count: 1,
+              evaluation_passed: true,
+              evaluation_signature: record.evaluation.deterministic_signature,
+            },
+            thesis_delta: {
+              previous_session_id: previousSessionId,
+              thesis_changed: idx > 0,
+              confidence_changed: idx > 0,
+              claims_changed: false,
+              claim_ids_added: [],
+              claim_ids_removed: [],
+              freshness_policy_changed: false,
+              freshness_policy_violation_delta: 0,
+              freshness_policy_warning_delta: 0,
+              conflicts_changed: false,
+              conflict_ids_added: [],
+              conflict_ids_removed: [],
+              evaluation_changed: idx > 0,
+              evaluation_passed_changed: false,
+              evaluation_signature_before:
+                idx > 0 ? fullRecordById[previousSessionId as string].evaluation.deterministic_signature : null,
+              evaluation_signature_after: record.evaluation.deterministic_signature,
+              delta_signature: `delta-sig-${sessionId}-${idx}`,
+            },
+          }
+        }),
       }
     }
 
@@ -790,6 +924,67 @@ describe('HomePage workspace persistence', () => {
       http.get('/api/v1/research/sessions', () => HttpResponse.json({ sessions: [savedSummary, savedSummaryTwo], count: 2 })),
       http.get('/api/v1/research/sessions/:savedId', ({ params }) => {
         return HttpResponse.json(fullRecordById[String(params.savedId)])
+      }),
+      http.get('/api/v1/research/sessions/:savedId/timeline', ({ params }) => {
+        const savedId = String(params.savedId)
+        const summary = sessionById[savedId] ?? savedSummary
+        const record = fullRecordById[savedId] ?? savedRecord
+        return HttpResponse.json({
+          thread_session_id: summary.session_id,
+          timeline_signature: `thread-timeline-${summary.session_id}`,
+          timeline: [
+            {
+              session_id: savedId,
+              exists: true,
+              label: summary.label,
+              question: summary.question,
+              query_class: summary.query_class,
+              saved_at: summary.saved_at,
+              evaluation_passed: true,
+              snapshot_signature: summary.snapshot_signature,
+              archived: false,
+              thesis_state: {
+                thesis: record.brief.thesis,
+                confidence: record.brief.confidence,
+                claim_ids: [
+                  'bull-1-inversion-easing',
+                  'bull-2-disinflation-progress',
+                  'bull-3-easing-pricing-support',
+                  'bear-1-inversion-still-warning',
+                  'bear-2-credit-stress-elevated',
+                  'risk-1-policy-repricing',
+                  'risk-2-inflation-surprise',
+                ],
+                claim_count: 7,
+                freshness_policy_violation_count: 0,
+                freshness_policy_warning_count: 0,
+                conflict_ids: ['conflict-curve-interpretation'],
+                conflict_count: 1,
+                evaluation_passed: true,
+                evaluation_signature: record.evaluation.deterministic_signature,
+              },
+              thesis_delta: {
+                previous_session_id: null,
+                thesis_changed: false,
+                confidence_changed: false,
+                claims_changed: false,
+                claim_ids_added: [],
+                claim_ids_removed: [],
+                freshness_policy_changed: false,
+                freshness_policy_violation_delta: 0,
+                freshness_policy_warning_delta: 0,
+                conflicts_changed: false,
+                conflict_ids_added: [],
+                conflict_ids_removed: [],
+                evaluation_changed: false,
+                evaluation_passed_changed: false,
+                evaluation_signature_before: null,
+                evaluation_signature_after: record.evaluation.deterministic_signature,
+                delta_signature: `delta-${savedId}`,
+              },
+            },
+          ],
+        })
       }),
       http.get('/api/v1/collections', () => HttpResponse.json({ collections: listPayload, count: listPayload.length })),
       http.post('/api/v1/collections', async ({ request }) => {
@@ -858,7 +1053,9 @@ describe('HomePage workspace persistence', () => {
           ...detail,
           collection: {
             ...detail.collection,
-            session_ids: detail.collection.session_ids.filter((sessionId) => sessionId !== String(params.sessionId)),
+            session_ids: detail.collection.session_ids.filter(
+              (sessionId: string) => sessionId !== String(params.sessionId)
+            ),
             updated_at: '2026-04-03T11:33:00Z',
             collection_signature: 'collection-sig-removed',
           },
@@ -912,11 +1109,15 @@ describe('HomePage workspace persistence', () => {
     expect(await screen.findByTestId('brief-complete')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('workspace-collection-add-active-session'))
     expect(await screen.findByTestId('workspace-collection-timeline-item-0')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-collection-timeline-signature')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-collection-thesis-0')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-collection-delta-0')).toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('workspace-reopen-1'))
     expect(await screen.findByTestId('brief-complete')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('workspace-collection-add-active-session'))
     expect(await screen.findByTestId('workspace-collection-timeline-item-1')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-collection-delta-1')).toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('workspace-collection-move-up-1'))
     await waitFor(() => {
@@ -925,6 +1126,8 @@ describe('HomePage workspace persistence', () => {
 
     fireEvent.click(screen.getByTestId('workspace-collection-reopen-0'))
     expect(await screen.findByTestId('brief-complete')).toBeInTheDocument()
+    expect(await screen.findByTestId('workspace-thread-signature')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-thread-timeline-item-0')).toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('workspace-collection-remove-0'))
     await waitFor(() => {

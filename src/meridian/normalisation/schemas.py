@@ -397,6 +397,39 @@ class ReorderCollectionSessionsRequest(BaseModel):
     session_ids: list[str] = Field(min_length=1)
 
 
+class ResearchThesisStateSnapshot(BaseModel):
+    thesis: str
+    confidence: int = Field(ge=1, le=5)
+    claim_ids: list[str] = Field(default_factory=list)
+    claim_count: int = Field(ge=0)
+    freshness_policy_violation_count: int = Field(ge=0)
+    freshness_policy_warning_count: int = Field(ge=0)
+    conflict_ids: list[str] = Field(default_factory=list)
+    conflict_count: int = Field(ge=0)
+    evaluation_passed: bool | None = None
+    evaluation_signature: str | None = None
+
+
+class ResearchThesisDelta(BaseModel):
+    previous_session_id: str | None = None
+    thesis_changed: bool = False
+    confidence_changed: bool = False
+    claims_changed: bool = False
+    claim_ids_added: list[str] = Field(default_factory=list)
+    claim_ids_removed: list[str] = Field(default_factory=list)
+    freshness_policy_changed: bool = False
+    freshness_policy_violation_delta: int = 0
+    freshness_policy_warning_delta: int = 0
+    conflicts_changed: bool = False
+    conflict_ids_added: list[str] = Field(default_factory=list)
+    conflict_ids_removed: list[str] = Field(default_factory=list)
+    evaluation_changed: bool = False
+    evaluation_passed_changed: bool = False
+    evaluation_signature_before: str | None = None
+    evaluation_signature_after: str | None = None
+    delta_signature: str
+
+
 class ResearchCollectionTimelineEntry(BaseModel):
     session_id: str
     exists: bool
@@ -407,9 +440,18 @@ class ResearchCollectionTimelineEntry(BaseModel):
     evaluation_passed: bool | None = None
     snapshot_signature: str | None = None
     archived: bool | None = None
+    thesis_state: ResearchThesisStateSnapshot | None = None
+    thesis_delta: ResearchThesisDelta | None = None
 
 
 class ResearchCollectionDetail(BaseModel):
     collection: ResearchCollection
     timeline: list[ResearchCollectionTimelineEntry] = Field(default_factory=list)
     missing_session_count: int = 0
+    timeline_signature: str = ""
+
+
+class ResearchThreadTimelineDetail(BaseModel):
+    thread_session_id: str
+    timeline: list[ResearchCollectionTimelineEntry] = Field(default_factory=list)
+    timeline_signature: str

@@ -303,12 +303,54 @@ Canonical signature notes:
 - `evaluation_passed: bool | null`
 - `snapshot_signature: str | null`
 - `archived: bool | null`
+- `thesis_state: ResearchThesisStateSnapshot | null`
+- `thesis_delta: ResearchThesisDelta | null`
+
+## ResearchThesisStateSnapshot
+
+- `thesis: str`
+- `confidence: int [1,5]`
+- `claim_ids: list[str]`
+- `claim_count: int`
+- `freshness_policy_violation_count: int`
+- `freshness_policy_warning_count: int`
+- `conflict_ids: list[str]`
+- `conflict_count: int`
+- `evaluation_passed: bool | null`
+- `evaluation_signature: str | null`
+
+## ResearchThesisDelta
+
+- `previous_session_id: str | null`
+- `thesis_changed: bool`
+- `confidence_changed: bool`
+- `claims_changed: bool`
+- `claim_ids_added: list[str]`
+- `claim_ids_removed: list[str]`
+- `freshness_policy_changed: bool`
+- `freshness_policy_violation_delta: int`
+- `freshness_policy_warning_delta: int`
+- `conflicts_changed: bool`
+- `conflict_ids_added: list[str]`
+- `conflict_ids_removed: list[str]`
+- `evaluation_changed: bool`
+- `evaluation_passed_changed: bool`
+- `evaluation_signature_before: str | null`
+- `evaluation_signature_after: str | null`
+- `delta_signature: str` (deterministic hash over stable delta payload)
 
 ## ResearchCollectionDetail
 
 - `collection: ResearchCollection`
 - `timeline: list[ResearchCollectionTimelineEntry]`
 - `missing_session_count: int`
+- `timeline_signature: str`
+
+## ResearchThreadTimelineDetail
+
+- `thread_session_id: str`
+- `timeline: list[ResearchCollectionTimelineEntry]` (ordered by `saved_at` ascending)
+- `timeline_signature: str`
 
 ## MispricingScore
 

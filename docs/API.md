@@ -408,10 +408,68 @@ Response shape:
       "saved_at": "...",
       "evaluation_passed": true,
       "snapshot_signature": "<sha256>",
-      "archived": false
+      "archived": false,
+      "thesis_state": {
+        "thesis": "...",
+        "confidence": 3,
+        "claim_ids": ["bull-1-..."],
+        "claim_count": 7,
+        "freshness_policy_violation_count": 0,
+        "freshness_policy_warning_count": 0,
+        "conflict_ids": ["conflict-..."],
+        "conflict_count": 1,
+        "evaluation_passed": true,
+        "evaluation_signature": "<sha256>"
+      },
+      "thesis_delta": {
+        "previous_session_id": "rs-previous",
+        "thesis_changed": true,
+        "confidence_changed": false,
+        "claims_changed": true,
+        "freshness_policy_changed": false,
+        "conflicts_changed": true,
+        "evaluation_changed": true,
+        "delta_signature": "<sha256>"
+      }
     }
   ],
-  "missing_session_count": 0
+  "missing_session_count": 0,
+  "timeline_signature": "<sha256>"
+}
+```
+
+### GET /api/v1/research/sessions/{saved_id}/timeline
+
+Returns ordered thesis evolution for the runtime thread referenced by `saved_id`.
+
+Query parameters:
+
+- `include_archived`: optional boolean (default `true`)
+
+Response shape:
+
+```json
+{
+  "thread_session_id": "sess-abcd1234",
+  "timeline": [
+    {
+      "session_id": "rs-...",
+      "exists": true,
+      "saved_at": "2026-04-05T00:00:00Z",
+      "thesis_state": { "thesis": "...", "confidence": 3, "claim_count": 7 },
+      "thesis_delta": {
+        "previous_session_id": "rs-prior",
+        "thesis_changed": true,
+        "confidence_changed": true,
+        "claims_changed": false,
+        "freshness_policy_changed": false,
+        "conflicts_changed": true,
+        "evaluation_changed": true,
+        "delta_signature": "<sha256>"
+      }
+    }
+  ],
+  "timeline_signature": "<sha256>"
 }
 ```
 

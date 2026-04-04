@@ -165,6 +165,39 @@ export type ResearchCollectionSummary = {
   collection_signature: string
 }
 
+export type ResearchThesisStateSnapshot = {
+  thesis: string
+  confidence: number
+  claim_ids: string[]
+  claim_count: number
+  freshness_policy_violation_count: number
+  freshness_policy_warning_count: number
+  conflict_ids: string[]
+  conflict_count: number
+  evaluation_passed?: boolean | null
+  evaluation_signature?: string | null
+}
+
+export type ResearchThesisDelta = {
+  previous_session_id?: string | null
+  thesis_changed: boolean
+  confidence_changed: boolean
+  claims_changed: boolean
+  claim_ids_added: string[]
+  claim_ids_removed: string[]
+  freshness_policy_changed: boolean
+  freshness_policy_violation_delta: number
+  freshness_policy_warning_delta: number
+  conflicts_changed: boolean
+  conflict_ids_added: string[]
+  conflict_ids_removed: string[]
+  evaluation_changed: boolean
+  evaluation_passed_changed: boolean
+  evaluation_signature_before?: string | null
+  evaluation_signature_after?: string | null
+  delta_signature: string
+}
+
 export type ResearchCollectionTimelineEntry = {
   session_id: string
   exists: boolean
@@ -175,6 +208,8 @@ export type ResearchCollectionTimelineEntry = {
   evaluation_passed?: boolean | null
   snapshot_signature?: string | null
   archived?: boolean | null
+  thesis_state?: ResearchThesisStateSnapshot | null
+  thesis_delta?: ResearchThesisDelta | null
 }
 
 export type ResearchCollection = {
@@ -188,6 +223,13 @@ export type ResearchCollection = {
   collection_signature: string
   timeline: ResearchCollectionTimelineEntry[]
   missing_session_count: number
+  timeline_signature: string
+}
+
+export type ResearchThreadTimelineDetail = {
+  thread_session_id: string
+  timeline: ResearchCollectionTimelineEntry[]
+  timeline_signature: string
 }
 
 export type SessionRecaptureLineage = {

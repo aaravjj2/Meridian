@@ -10,7 +10,6 @@ from meridian.normalisation.schemas import (
     ResearchCollection,
     ResearchCollectionDetail,
     ResearchCollectionSummary,
-    ResearchCollectionTimelineEntry,
     UpdateCollectionRequest,
 )
 from meridian.workspace.collection_store import get_collection_store
@@ -27,41 +26,15 @@ class CollectionListResponse(BaseModel):
 
 def _detail_from_collection(collection: ResearchCollection) -> ResearchCollectionDetail:
     session_store = get_session_store()
-    summaries = session_store.list_sessions(include_archived=True)
-    summary_index = {item.id: item for item in summaries}
-
-    timeline: list[ResearchCollectionTimelineEntry] = []
-    missing_session_count = 0
-    for session_id in collection.session_ids:
-        summary = summary_index.get(session_id)
-        if summary is None:
-            timeline.append(
-                ResearchCollectionTimelineEntry(
-                    session_id=session_id,
-                    exists=False,
-                )
-            )
-            missing_session_count += 1
-            continue
-
-        timeline.append(
-            ResearchCollectionTimelineEntry(
-                session_id=summary.id,
-                exists=True,
-                label=summary.label,
-                question=summary.question,
-                query_class=summary.query_class,
-                saved_at=summary.saved_at,
-                evaluation_passed=summary.evaluation_passed,
-                snapshot_signature=summary.snapshot_signature,
-                archived=summary.archived,
-            )
-        )
+    timeline, missing_session_count, timeline_signature = session_store.build_collection_timeline(
+        collection.session_ids
+    )
 
     return ResearchCollectionDetail(
         collection=collection,
         timeline=timeline,
         missing_session_count=missing_session_count,
+        timeline_signature=timeline_signature,
     )
 
 

@@ -108,6 +108,7 @@ def test_collection_create_list_get_update_delete() -> None:
     assert "collection" in created_payload
     assert created_payload["timeline"] == []
     assert created_payload["missing_session_count"] == 0
+    assert created_payload["timeline_signature"]
 
     collection = created_payload["collection"]
     assert collection["id"].startswith("coll-")
@@ -175,9 +176,18 @@ def test_collection_add_remove_reorder_and_ordered_timeline() -> None:
     assert detail["collection"]["session_ids"] == [saved_b["id"], saved_a["id"]]
     assert detail["timeline"][0]["session_id"] == saved_b["id"]
     assert detail["timeline"][1]["session_id"] == saved_a["id"]
+    assert detail["timeline_signature"]
     assert detail["timeline"][0]["exists"] is True
     assert detail["timeline"][0]["question"]
     assert detail["timeline"][0]["query_class"] in {"macro_outlook", "event_probability", "ticker_macro"}
+    assert detail["timeline"][0]["thesis_state"]["thesis"]
+    assert detail["timeline"][0]["thesis_state"]["confidence"] >= 1
+    assert detail["timeline"][0]["thesis_delta"]["previous_session_id"] is None
+    assert detail["timeline"][1]["thesis_delta"]["previous_session_id"] == saved_b["id"]
+    assert detail["timeline"][1]["thesis_delta"]["delta_signature"]
+    assert isinstance(detail["timeline"][1]["thesis_delta"]["claims_changed"], bool)
+    assert isinstance(detail["timeline"][1]["thesis_delta"]["conflicts_changed"], bool)
+    assert isinstance(detail["timeline"][1]["thesis_delta"]["evaluation_changed"], bool)
 
     invalid_reorder = client.put(
         f"/api/v1/collections/{collection_id}/sessions/reorder",

@@ -22,6 +22,7 @@ import type {
   SessionIntegrityReport,
   SavedResearchSession,
   SavedResearchSessionSummary,
+  ResearchThreadTimelineDetail,
   TraceEvent,
 } from '@/components/Terminal/types'
 
@@ -467,9 +468,10 @@ async function getWorkspaceIntegrity(options?: { search?: string; includeArchive
 }
 
 type CollectionDetailResponse = {
-  collection: Omit<ResearchCollection, 'timeline' | 'missing_session_count'>
+  collection: Omit<ResearchCollection, 'timeline' | 'missing_session_count' | 'timeline_signature'>
   timeline?: ResearchCollection['timeline']
   missing_session_count?: number
+  timeline_signature?: string
 }
 
 function normalizeCollectionDetail(payload: CollectionDetailResponse | ResearchCollection): ResearchCollection {
@@ -478,9 +480,21 @@ function normalizeCollectionDetail(payload: CollectionDetailResponse | ResearchC
       ...payload.collection,
       timeline: payload.timeline ?? [],
       missing_session_count: payload.missing_session_count ?? 0,
+      timeline_signature: payload.timeline_signature ?? '',
     }
   }
-  return payload
+  return {
+    ...payload,
+    timeline_signature: payload.timeline_signature ?? '',
+  }
+}
+
+async function getThreadTimeline(savedId: string): Promise<ResearchThreadTimelineDetail> {
+  const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}/timeline`)
+  if (!response.ok) {
+    throw new Error(`Failed to load timeline: ${response.status}`)
+  }
+  return (await response.json()) as ResearchThreadTimelineDetail
 }
 
 async function listCollections(): Promise<ResearchCollectionSummary[]> {
@@ -646,6 +660,9 @@ export default function HomePage() {
   const [collections, setCollections] = useState<ResearchCollectionSummary[]>([])
   const [activeCollection, setActiveCollection] = useState<ResearchCollection | null>(null)
   const [collectionBusy, setCollectionBusy] = useState(false)
+  const [threadTimelineState, setThreadTimelineState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [threadTimelineError, setThreadTimelineError] = useState('')
+  const [threadTimeline, setThreadTimeline] = useState<ResearchThreadTimelineDetail | null>(null)
   const [evidenceState, setEvidenceState] = useState<EvidenceNavigationState>(EMPTY_EVIDENCE_STATE)
   const [evaluation, setEvaluation] = useState<ResearchEvaluationReport | null>(null)
   const [evidenceHydrationKey, setEvidenceHydrationKey] = useState(0)
@@ -760,6 +777,31 @@ export default function HomePage() {
   useEffect(() => {
     void refreshCollections()
   }, [refreshCollections])
+
+  const refreshThreadTimeline = useCallback(async (savedId: string | null) => {
+    if (!savedId) {
+      setThreadTimeline(null)
+      setThreadTimelineError('')
+      setThreadTimelineState('idle')
+      return
+    }
+
+    setThreadTimelineState('loading')
+    setThreadTimelineError('')
+    try {
+      const detail = await getThreadTimeline(savedId)
+      setThreadTimeline(detail)
+      setThreadTimelineState('ready')
+    } catch (timelineError) {
+      setThreadTimeline(null)
+      setThreadTimelineState('error')
+      setThreadTimelineError(timelineError instanceof Error ? timelineError.message : 'Failed to load timeline')
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshThreadTimeline(activeSavedSessionId)
+  }, [activeSavedSessionId, refreshThreadTimeline])
 
   const createCollectionByPayload = useCallback(
     async (payload: { title: string; summary?: string | null; notes?: string | null }) => {
@@ -1258,6 +1300,9 @@ export default function HomePage() {
               collections={collections}
               activeCollection={activeCollection}
               collectionBusy={collectionBusy}
+              threadTimelineState={threadTimelineState}
+              threadTimelineError={threadTimelineError}
+              threadTimeline={threadTimeline}
               onSearchChange={setWorkspaceSearch}
               onToggleIncludeArchived={setIncludeArchived}
               onQueryClassFilterChange={setQueryClassFilter}
@@ -1284,6 +1329,9 @@ export default function HomePage() {
               }}
               onCollectionReorderSession={(sessionIdToMove, direction) => {
                 void reorderSessionInCurrentCollection(sessionIdToMove, direction)
+              }}
+              onThreadTimelineRefresh={() => {
+                void refreshThreadTimeline(activeSavedSessionId)
               }}
               onSaveCurrent={() => {
                 void saveCurrentSession()
