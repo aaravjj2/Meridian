@@ -84,6 +84,10 @@ Phase 7 snapshot-aware checks include:
 - `cache_lineage_visibility`
 - `bundle_snapshot_provenance_ready`
 
+Wave 10 freshness policy check includes:
+
+- `freshness_policy_compliance`
+
 ## TraceStep
 
 - `step_index: int`
@@ -199,6 +203,8 @@ Canonical signature notes:
 - `evidence_state_valid: bool`
 - `provenance_complete: bool`
 - `freshness_valid: bool`
+- `freshness_policy_valid: bool`
+- `freshness_policy_violation_count: int`
 - `snapshot_complete: bool`
 - `snapshot_consistent: bool`
 - `snapshot_summary_present: bool`

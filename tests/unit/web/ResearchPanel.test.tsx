@@ -193,6 +193,7 @@ describe('ResearchPanel', () => {
           ],
           metrics: {
             source_count: 3,
+            freshness_policy_violations: ['news:fed-rate-decision (stale)'],
           },
         }}
         errorMessage=""
@@ -204,6 +205,8 @@ describe('ResearchPanel', () => {
     expect(screen.getByTestId('snapshot-kind-fixture')).toHaveTextContent('Fixture: 3')
     expect(screen.getByTestId('evaluation-report')).toBeInTheDocument()
     expect(screen.getByTestId('evaluation-signature')).toHaveTextContent('sig-123')
+    expect(screen.getByTestId('policy-warning-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('policy-warning-item-0')).toHaveTextContent('news:fed-rate-decision (stale)')
     expect(screen.getByTestId('source-freshness-0')).toHaveTextContent('AGING')
     expect(screen.getByTestId('source-snapshot-kind-badge-0')).toHaveTextContent('FIXTURE')
 

@@ -362,6 +362,12 @@ export default function WorkspacePanel({
             <p data-testid="workspace-integrity-freshness">
               Freshness: {integrityReport.freshness_valid ? 'resolved' : 'unknown present'}
             </p>
+            <p data-testid="workspace-integrity-freshness-policy">
+              Freshness policy:{' '}
+              {integrityReport.freshness_policy_valid
+                ? 'compliant'
+                : `${integrityReport.freshness_policy_violation_count} violation(s)`}
+            </p>
             <p data-testid="workspace-integrity-snapshot">
               Snapshot provenance:{' '}
               {integrityReport.snapshot_complete

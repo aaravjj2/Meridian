@@ -77,6 +77,10 @@ def test_workspace_save_list_get_and_export_roundtrip() -> None:
     assert saved["brief"]["snapshot_summary"]["snapshot_count"] >= 3
     assert saved["evaluation"]["version"] == "phase-7"
     assert saved["evaluation"]["passed"] is True
+    assert any(
+        check["check_id"] == "freshness_policy_compliance"
+        for check in saved["evaluation"]["checks"]
+    )
 
     listed = client.get("/api/v1/research/sessions")
     assert listed.status_code == 200
@@ -323,6 +327,8 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
     assert integrity_payload["signature_valid"] is True
     assert integrity_payload["provenance_complete"] is True
     assert integrity_payload["freshness_valid"] is True
+    assert integrity_payload["freshness_policy_valid"] is True
+    assert integrity_payload["freshness_policy_violation_count"] == 0
     assert integrity_payload["snapshot_complete"] is True
     assert integrity_payload["snapshot_consistent"] is True
     assert integrity_payload["snapshot_summary_present"] is True

@@ -253,6 +253,8 @@ export type SessionIntegrityReport = {
   evidence_state_valid: boolean
   provenance_complete: boolean
   freshness_valid: boolean
+  freshness_policy_valid: boolean
+  freshness_policy_violation_count: number
   snapshot_complete: boolean
   snapshot_consistent: boolean
   snapshot_summary_present: boolean

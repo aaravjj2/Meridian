@@ -48,6 +48,7 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await page.getByTestId('workspace-verify-0').click()
   await expect(page.getByTestId('workspace-integrity-report')).toBeVisible({ timeout: 10000 })
   await expect(page.getByTestId('workspace-integrity-provenance')).toBeVisible()
+  await expect(page.getByTestId('workspace-integrity-freshness-policy')).toBeVisible()
   await expect(page.getByTestId('workspace-integrity-snapshot')).toBeVisible()
   await expect(page.getByTestId('workspace-integrity-evaluation')).toBeVisible()
   await page.getByTestId('workspace-integrity-run-all').click()

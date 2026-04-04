@@ -393,6 +393,48 @@ def _attach_provenance_and_evaluation(
     )
     cache_lineage_visibility = sum(cache_lineage_counts.values()) == len(sources)
     bundle_snapshot_ready = snapshot_checksum_coverage == len(sources) and snapshot_metadata_complete
+    freshness_policy_rules: dict[str, dict[str, float]] = {
+        "fred": {"max_age_hours": float(24 * 180), "warn_age_hours": float(24 * 30)},
+        "market": {"max_age_hours": float(24 * 3), "warn_age_hours": float(24)},
+        "news": {"max_age_hours": float(24 * 2), "warn_age_hours": float(12)},
+        "edgar": {"max_age_hours": float(24 * 45), "warn_age_hours": float(24 * 15)},
+    }
+    freshness_policy_default = {"max_age_hours": float(24 * 30), "warn_age_hours": float(24 * 7)}
+    freshness_policy_violations: list[dict[str, Any]] = []
+    freshness_policy_warning_count = 0
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        source_type = str(source.get("type") or "unknown")
+        source_ref = f"{source_type}:{source.get('id')}"
+        provenance = source.get("provenance") if isinstance(source.get("provenance"), dict) else {}
+        freshness = str(provenance.get("freshness") or "unknown")
+        freshness_hours = provenance.get("freshness_hours")
+        hours_value = float(freshness_hours) if isinstance(freshness_hours, (int, float)) else None
+        policy = freshness_policy_rules.get(source_type, freshness_policy_default)
+        violation = (
+            freshness == "unknown"
+            or freshness == "stale"
+            or (hours_value is not None and hours_value > float(policy["max_age_hours"]))
+        )
+        warning = (
+            not violation
+            and hours_value is not None
+            and hours_value > float(policy["warn_age_hours"])
+        )
+        if warning:
+            freshness_policy_warning_count += 1
+        if violation:
+            freshness_policy_violations.append(
+                {
+                    "source_ref": source_ref,
+                    "source_type": source_type,
+                    "freshness": freshness,
+                    "freshness_hours": hours_value,
+                    "max_age_hours": float(policy["max_age_hours"]),
+                }
+            )
+    freshness_policy_passed = len(freshness_policy_violations) == 0
 
     checks = [
         {
@@ -421,6 +463,12 @@ def _attach_provenance_and_evaluation(
             "passed": unknown_count == 0,
             "detail": "Every source has a resolved freshness state.",
             "value": len(sources) - unknown_count,
+        },
+        {
+            "check_id": "freshness_policy_compliance",
+            "passed": freshness_policy_passed,
+            "detail": "Source freshness is within policy thresholds by source type.",
+            "value": len(freshness_policy_violations),
         },
         {
             "check_id": "deterministic_mode_alignment",
@@ -492,6 +540,18 @@ def _attach_provenance_and_evaluation(
             for source in sources
             if isinstance(source, dict)
         },
+        "freshness_policy": {
+            "version": "wave10-v1",
+            "violation_count": len(freshness_policy_violations),
+            "warning_count": freshness_policy_warning_count,
+            "violations": [
+                {
+                    "source_ref": item["source_ref"],
+                    "freshness": item["freshness"],
+                }
+                for item in freshness_policy_violations
+            ],
+        },
         "snapshot_summary": brief.get("snapshot_summary"),
         "trace_steps": trace_steps,
         "trace_types": [str(event.get("type", "")) for event in trace_events],
@@ -508,6 +568,13 @@ def _attach_provenance_and_evaluation(
             "trace_event_count": len(trace_events),
             "stale_source_count": freshness_counts.get("stale", 0),
             "unknown_source_count": unknown_count,
+            "freshness_policy_version": "wave10-v1",
+            "freshness_policy_violation_count": len(freshness_policy_violations),
+            "freshness_policy_warning_count": freshness_policy_warning_count,
+            "freshness_policy_violations": [
+                f"{item['source_ref']} ({item['freshness']})"
+                for item in freshness_policy_violations
+            ],
             "deterministic_source_count": deterministic_sources,
             "snapshot_count": len(snapshot_records),
             "fixture_snapshot_count": snapshot_kind_counts.get("fixture", 0),

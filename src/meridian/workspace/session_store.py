@@ -23,6 +23,15 @@ from meridian.settings import ROOT_DIR
 
 QueryClass = Literal["macro_outlook", "event_probability", "ticker_macro"]
 
+FRESHNESS_POLICY_VERSION = "wave10-v1"
+FRESHNESS_POLICY_RULES: dict[str, dict[str, Any]] = {
+    "fred": {"max_age_hours": 24 * 180, "warn_age_hours": 24 * 30},
+    "market": {"max_age_hours": 24 * 3, "warn_age_hours": 24},
+    "news": {"max_age_hours": 24 * 2, "warn_age_hours": 12},
+    "edgar": {"max_age_hours": 24 * 45, "warn_age_hours": 24 * 15},
+}
+DEFAULT_FRESHNESS_POLICY = {"max_age_hours": 24 * 30, "warn_age_hours": 24 * 7}
+
 
 def _iso_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -259,6 +268,8 @@ class SessionIntegrityReport(BaseModel):
     evidence_state_valid: bool
     provenance_complete: bool
     freshness_valid: bool
+    freshness_policy_valid: bool
+    freshness_policy_violation_count: int
     snapshot_complete: bool
     snapshot_consistent: bool
     snapshot_summary_present: bool
@@ -460,6 +471,56 @@ class ResearchSessionStore:
         if parsed is None:
             return None
         return (parsed + timedelta(hours=hours)).isoformat().replace("+00:00", "Z")
+
+    def _freshness_policy_summary(self, brief: ResearchBrief) -> dict[str, Any]:
+        evaluations: list[dict[str, Any]] = []
+        violations: list[dict[str, Any]] = []
+        warning_count = 0
+
+        for source in brief.sources:
+            source_ref = f"{source.type}:{source.id}"
+            provenance = source.provenance
+            freshness = provenance.freshness if provenance else "unknown"
+            freshness_hours = provenance.freshness_hours if provenance else None
+            rule = FRESHNESS_POLICY_RULES.get(source.type, DEFAULT_FRESHNESS_POLICY)
+            max_age_hours = float(rule["max_age_hours"])
+            warn_age_hours = float(rule["warn_age_hours"])
+
+            violation = (
+                freshness == "unknown"
+                or freshness == "stale"
+                or (freshness_hours is not None and freshness_hours > max_age_hours)
+            )
+            warning = (
+                not violation
+                and freshness_hours is not None
+                and freshness_hours > warn_age_hours
+            )
+            if warning:
+                warning_count += 1
+
+            evaluation = {
+                "source_ref": source_ref,
+                "source_type": source.type,
+                "freshness": freshness,
+                "freshness_hours": freshness_hours,
+                "max_age_hours": max_age_hours,
+                "warn_age_hours": warn_age_hours,
+                "violation": violation,
+                "warning": warning,
+            }
+            evaluations.append(evaluation)
+            if violation:
+                violations.append(evaluation)
+
+        return {
+            "version": FRESHNESS_POLICY_VERSION,
+            "rules": FRESHNESS_POLICY_RULES,
+            "evaluations": evaluations,
+            "violations": violations,
+            "violation_count": len(violations),
+            "warning_count": warning_count,
+        }
 
     def _enrich_brief_provenance(self, brief: ResearchBrief, mode: Literal["demo", "live"]) -> ResearchBrief:
         enriched = brief.model_copy(deep=True)
@@ -723,6 +784,9 @@ class ResearchSessionStore:
             and snapshot_summary_present
             and snapshot_checksum_complete
         )
+        freshness_policy = self._freshness_policy_summary(brief)
+        freshness_policy_violations = freshness_policy["violations"]
+        freshness_policy_passed = freshness_policy["violation_count"] == 0
 
         checks = [
             ResearchEvaluationCheck(
@@ -748,6 +812,12 @@ class ResearchSessionStore:
                 passed=unknown_count == 0,
                 detail="Every source has a resolved freshness state.",
                 value=len(brief.sources) - unknown_count,
+            ),
+            ResearchEvaluationCheck(
+                check_id="freshness_policy_compliance",
+                passed=freshness_policy_passed,
+                detail="Source freshness is within policy thresholds by source type.",
+                value=freshness_policy["violation_count"],
             ),
             ResearchEvaluationCheck(
                 check_id="deterministic_mode_alignment",
@@ -813,6 +883,18 @@ class ResearchSessionStore:
                 )
                 for source in brief.sources
             },
+            "freshness_policy": {
+                "version": freshness_policy["version"],
+                "violation_count": freshness_policy["violation_count"],
+                "warning_count": freshness_policy["warning_count"],
+                "violations": [
+                    {
+                        "source_ref": item["source_ref"],
+                        "freshness": item["freshness"],
+                    }
+                    for item in freshness_policy_violations
+                ],
+            },
             "snapshot_summary": brief.snapshot_summary,
             "trace_steps": trace_steps,
             "trace_types": [event.type for event in trace_events],
@@ -825,6 +907,13 @@ class ResearchSessionStore:
             "trace_event_count": len(trace_events),
             "stale_source_count": stale_count,
             "unknown_source_count": unknown_count,
+            "freshness_policy_version": freshness_policy["version"],
+            "freshness_policy_violation_count": freshness_policy["violation_count"],
+            "freshness_policy_warning_count": freshness_policy["warning_count"],
+            "freshness_policy_violations": [
+                f"{item['source_ref']} ({item['freshness']})"
+                for item in freshness_policy_violations
+            ],
             "deterministic_source_count": deterministic_sources,
             "snapshot_count": len(snapshot_records),
             "fixture_snapshot_count": snapshot_kind_counts.get("fixture", 0),
@@ -1383,6 +1472,9 @@ class ResearchSessionStore:
             if source.provenance is not None
         )
         freshness_valid = freshness_counter.get("unknown", 0) == 0
+        freshness_policy = self._freshness_policy_summary(record.brief)
+        freshness_policy_valid = freshness_policy["violation_count"] == 0
+        freshness_policy_violation_count = int(freshness_policy["violation_count"])
         snapshots = [
             source.provenance.snapshot
             for source in sources_with_provenance
@@ -1437,6 +1529,8 @@ class ResearchSessionStore:
             issues.append("one or more sources are missing provenance metadata")
         if not freshness_valid:
             issues.append("one or more sources have unknown freshness state")
+        if not freshness_policy_valid:
+            issues.append("one or more sources violate freshness policy thresholds")
         if not snapshot_complete:
             issues.append("one or more sources are missing snapshot provenance metadata")
         if not snapshot_consistent:
@@ -1461,6 +1555,8 @@ class ResearchSessionStore:
             evidence_state_valid=evidence_state_valid,
             provenance_complete=provenance_complete,
             freshness_valid=freshness_valid,
+            freshness_policy_valid=freshness_policy_valid,
+            freshness_policy_violation_count=freshness_policy_violation_count,
             snapshot_complete=snapshot_complete,
             snapshot_consistent=snapshot_consistent,
             snapshot_summary_present=snapshot_summary_present,
@@ -1484,6 +1580,11 @@ class ResearchSessionStore:
                     "aging": freshness_counter.get("aging", 0),
                     "stale": freshness_counter.get("stale", 0),
                     "unknown": freshness_counter.get("unknown", 0),
+                },
+                "freshness_policy": {
+                    "version": freshness_policy["version"],
+                    "violation_count": freshness_policy_violation_count,
+                    "warning_count": int(freshness_policy["warning_count"]),
                 },
                 "snapshot_kind_counts": (
                     snapshot_summary.get("snapshot_kind_counts")

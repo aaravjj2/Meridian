@@ -288,6 +288,8 @@ Phase 7 integrity fields:
 
 - `provenance_complete`
 - `freshness_valid`
+- `freshness_policy_valid`
+- `freshness_policy_violation_count`
 - `snapshot_complete`
 - `snapshot_consistent`
 - `snapshot_summary_present`
@@ -296,6 +298,10 @@ Phase 7 integrity fields:
 - `evaluation_valid`
 - `evaluation_signature`
 - `bundle_snapshot_signature`
+
+Wave 10 evaluation check:
+
+- `freshness_policy_compliance`: verifies source freshness against policy thresholds by source type
 
 ### GET /api/v1/research/sessions/{saved_id}/integrity
 

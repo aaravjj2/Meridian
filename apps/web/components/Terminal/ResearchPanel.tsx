@@ -316,6 +316,10 @@ export default function ResearchPanel({
     snapshotSummary && typeof snapshotSummary.cache_lineage_counts === 'object'
       ? (snapshotSummary.cache_lineage_counts as Record<string, unknown>)
       : null
+  const freshnessPolicyViolations =
+    evaluation && Array.isArray(evaluation.metrics?.freshness_policy_violations)
+      ? (evaluation.metrics.freshness_policy_violations as string[])
+      : []
 
   return (
     <div className="brief-complete" data-testid="brief-complete">
@@ -476,6 +480,24 @@ export default function ResearchPanel({
               >
                 <strong>{check.check_id}</strong>
                 <span>{check.detail}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {freshnessPolicyViolations.length > 0 ? (
+        <section className="brief-section" data-testid="policy-warning-panel">
+          <span className="block-label">FRESHNESS POLICY WARNINGS</span>
+          <p data-testid="policy-warning-count">Violations: {freshnessPolicyViolations.length}</p>
+          <div className="evaluation-checks">
+            {freshnessPolicyViolations.slice(0, 6).map((violation, idx) => (
+              <div
+                key={`${violation}-${idx}`}
+                className="evaluation-check evaluation-check-fail"
+                data-testid={`policy-warning-item-${idx}`}
+              >
+                {violation}
               </div>
             ))}
           </div>

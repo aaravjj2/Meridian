@@ -85,6 +85,7 @@ def test_research_sse_stream_emits_complete() -> None:
         "snapshot_source_consistency",
         "cache_lineage_visibility",
         "bundle_snapshot_provenance_ready",
+        "freshness_policy_compliance",
     }.issubset(check_ids)
 
 

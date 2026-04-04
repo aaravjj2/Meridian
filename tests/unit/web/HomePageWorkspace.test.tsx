@@ -509,6 +509,8 @@ describe('HomePage workspace persistence', () => {
           evidence_state_valid: true,
           provenance_complete: true,
           freshness_valid: true,
+          freshness_policy_valid: true,
+          freshness_policy_violation_count: 0,
           snapshot_complete: true,
           snapshot_consistent: true,
           snapshot_summary_present: true,
@@ -536,6 +538,8 @@ describe('HomePage workspace persistence', () => {
               evidence_state_valid: true,
               provenance_complete: true,
               freshness_valid: true,
+              freshness_policy_valid: true,
+              freshness_policy_violation_count: 0,
               snapshot_complete: true,
               snapshot_consistent: true,
               snapshot_summary_present: true,
@@ -559,6 +563,8 @@ describe('HomePage workspace persistence', () => {
               evidence_state_valid: true,
               provenance_complete: true,
               freshness_valid: true,
+              freshness_policy_valid: true,
+              freshness_policy_violation_count: 0,
               snapshot_complete: true,
               snapshot_consistent: true,
               snapshot_summary_present: true,
@@ -615,6 +621,7 @@ describe('HomePage workspace persistence', () => {
     fireEvent.click(screen.getByTestId('workspace-verify-0'))
     expect(await screen.findByTestId('workspace-integrity-report')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-integrity-provenance')).toHaveTextContent('complete')
+    expect(screen.getByTestId('workspace-integrity-freshness-policy')).toHaveTextContent('compliant')
     expect(screen.getByTestId('workspace-integrity-snapshot')).toHaveTextContent('complete + consistent')
     expect(screen.getByTestId('workspace-integrity-evaluation')).toHaveTextContent('valid')
 
