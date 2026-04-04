@@ -23,6 +23,27 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await page.getByTestId('save-session-button').click()
   await expect(page.getByTestId('workspace-item-1')).toBeVisible({ timeout: 15000 })
 
+  await page.getByTestId('workspace-collection-create-title').fill('Yield Curve Notebook')
+  await page.getByTestId('workspace-collection-create-summary').fill('Threaded research sessions')
+  await page.getByTestId('workspace-collection-create-submit').click()
+  await expect(page.getByTestId('workspace-collection-detail')).toBeVisible({ timeout: 10000 })
+
+  await page.getByTestId('workspace-collection-add-active-session').click()
+  await expect(page.getByTestId('workspace-collection-timeline-item-0')).toBeVisible({ timeout: 10000 })
+
+  await page.getByTestId('workspace-reopen-1').click()
+  await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 10000 })
+  await page.getByTestId('workspace-collection-add-active-session').click()
+  await expect(page.getByTestId('workspace-collection-timeline-item-1')).toBeVisible({ timeout: 10000 })
+
+  await page.getByTestId('workspace-collection-move-up-1').click()
+  await expect(page.getByTestId('workspace-collection-reopen-0')).toBeVisible()
+  await page.getByTestId('workspace-collection-reopen-0').click()
+  await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByTestId('trace-step-0')).toBeVisible()
+  await expect(page.getByTestId('source-list')).toBeVisible()
+  await expect(page.getByTestId('snapshot-summary')).toBeVisible()
+
   const sessionIds = await page
     .locator('[data-testid^="workspace-item-"]')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-session-id')).filter(Boolean) as string[])

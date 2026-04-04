@@ -1,0 +1,102 @@
+{
+  "generated_at": "2026-04-04T22-43-31Z",
+  "output_dir": "artifacts/harness/2026-04-04T22-41-42Z",
+  "all_green": true,
+  "test_layers_green": true,
+  "layers": {
+    "typescript": {
+      "layer": "typescript",
+      "command": "npm run tsc",
+      "exit_code": 0,
+      "duration_ms": 2535,
+      "passed": null,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "log_path": "artifacts/harness/2026-04-04T22-41-42Z/typescript.log",
+      "details": {}
+    },
+    "frontend_unit": {
+      "layer": "frontend_unit",
+      "command": "npm run vitest -- --reporter=json --outputFile /home/aarav/Aarav/Meridian/artifacts/harness/2026-04-04T22-41-42Z/vitest-report.json",
+      "exit_code": 0,
+      "duration_ms": 5618,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "log_path": "artifacts/harness/2026-04-04T22-41-42Z/frontend_unit.log",
+      "details": {}
+    },
+    "backend_unit": {
+      "layer": "backend_unit",
+      "command": "/home/aarav/Aarav/Meridian/.venv/bin/python -m pytest -q --junitxml /home/aarav/Aarav/Meridian/artifacts/harness/2026-04-04T22-41-42Z/pytest-report.xml",
+      "exit_code": 0,
+      "duration_ms": 39150,
+      "passed": 56,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "log_path": "artifacts/harness/2026-04-04T22-41-42Z/backend_unit.log",
+      "details": {}
+    },
+    "e2e": {
+      "layer": "e2e",
+      "command": "npm run playwright -- --reporter=json",
+      "exit_code": 0,
+      "duration_ms": 58523,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "log_path": "artifacts/harness/2026-04-04T22-41-42Z/e2e.log",
+      "details": {}
+    }
+  },
+  "determinism": {
+    "stable_projection": {
+      "backend_unit": {
+        "exit_code": 0,
+        "passed": 56,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0
+      },
+      "e2e": {
+        "exit_code": 0,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0
+      },
+      "frontend_unit": {
+        "exit_code": 0,
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0
+      },
+      "typescript": {
+        "exit_code": 0,
+        "passed": null,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0
+      }
+    },
+    "signature_sha256": "98de2923257b3dd7435c244e1d8d592a773eff1c491358646f2eee76864e342c",
+    "baseline_summary": null,
+    "baseline_signature_sha256": null,
+    "baseline_match": null
+  },
+  "requirements": {
+    "typescript_errors": 0,
+    "frontend_failed": 0,
+    "frontend_skipped": 0,
+    "backend_failed": 0,
+    "backend_skipped": 0,
+    "e2e_failed": 0,
+    "e2e_skipped": 0,
+    "e2e_retries": 0
+  }
+}

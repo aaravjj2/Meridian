@@ -181,6 +181,10 @@ class ResearchCollectionStore:
         # Verify all session IDs are in the current collection
         current_set = set(collection.session_ids)
         requested_set = set(session_ids)
+        if len(session_ids) != len(collection.session_ids):
+            raise ValueError("Cannot reorder: session count does not match collection contents")
+        if len(requested_set) != len(session_ids):
+            raise ValueError("Cannot reorder: duplicate session IDs are not allowed")
         if current_set != requested_set:
             raise ValueError("Cannot reorder: session IDs don't match collection contents")
 

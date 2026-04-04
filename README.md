@@ -229,7 +229,7 @@ Meridian demonstrates GLM-5.1's capabilities across real-world scenarios:
 4. **Regime Detection**: "What's the current macro regime across 5 dimensions?"
 5. **Screener Alerts**: "Show top 10 market-vs-model probability gaps"
 
-## Workspace Session Management (Phase 11)
+## Workspace Sessions and Collections (Phase 12)
 
 Meridian supports a single-user research workspace directly in the terminal flow with deterministic local persistence and audit tooling:
 
@@ -248,14 +248,20 @@ Meridian supports a single-user research workspace directly in the terminal flow
 - Run integrity checks that validate snapshot completeness/consistency alongside canonical signatures
 - Export saved sessions as JSON, Markdown, or self-contained bundle JSON including snapshot provenance payloads
 - Continue from reopened sessions using the original runtime thread id
+- Create compact research collections (notebooks) with title, summary, and notes
+- Add/remove/reorder saved sessions inside each collection as an ordered timeline
+- Reopen timeline sessions directly from a collection while preserving brief/trace/provenance surfaces
+- Track deterministic `collection_signature` values for auditable collection state transitions
 
-Saved sessions are persisted locally under:
+Saved sessions and collections are persisted locally under:
 
 - `data/processed/research_sessions/`
+- `data/processed/collections/`
 
 Optional override for local testing:
 
 - `MERIDIAN_SESSION_STORE_DIR=<path>`
+- `MERIDIAN_COLLECTION_STORE_DIR=<path>`
 
 ---
 

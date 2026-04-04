@@ -155,6 +155,41 @@ export type SavedResearchSession = SavedResearchSessionSummary & {
   updated_at: string
 }
 
+export type ResearchCollectionSummary = {
+  id: string
+  title: string
+  summary?: string | null
+  session_count: number
+  created_at: string
+  updated_at: string
+  collection_signature: string
+}
+
+export type ResearchCollectionTimelineEntry = {
+  session_id: string
+  exists: boolean
+  label?: string | null
+  question?: string | null
+  query_class?: ResearchBrief['query_class']
+  saved_at?: string | null
+  evaluation_passed?: boolean | null
+  snapshot_signature?: string | null
+  archived?: boolean | null
+}
+
+export type ResearchCollection = {
+  id: string
+  title: string
+  summary?: string | null
+  notes?: string | null
+  session_ids: string[]
+  created_at: string
+  updated_at: string
+  collection_signature: string
+  timeline: ResearchCollectionTimelineEntry[]
+  missing_session_count: number
+}
+
 export type SessionRecaptureLineage = {
   source_session_id: string
   recaptured_session_id: string

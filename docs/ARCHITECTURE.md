@@ -123,7 +123,7 @@ Meridian is a full-stack financial research platform that leverages GLM-5.1's ag
 **Location**: `apps/api/`, `src/meridian/`
 
 **Key Modules**:
-- **Routers**: REST endpoints for research, screener, regime, markets
+- **Routers**: REST endpoints for research, screener, regime, markets, collections
 - **Agent**: GLM-5.1 ReAct loop implementation
 - **Tools**: Type-safe tool registry with 10+ data sources
 - **WebSocket**: Real-time bidirectional communication
@@ -354,6 +354,10 @@ Canonical signatures are computed from analytical content (question, brief, trac
 
 The workspace persistence layer stores these records as JSON files in
 `data/processed/research_sessions/` for single-user local/demo-safe operation.
+
+Wave 12 adds a parallel single-user collection store for ordered research notebooks in
+`data/processed/collections/`, with collection metadata (`title`, `summary`, `notes`) and
+ordered `session_ids` timeline linkage back to saved session records.
 
 ---
 

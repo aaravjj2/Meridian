@@ -1,9 +1,11 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import type {
   ResearchBrief,
+  ResearchCollection,
+  ResearchCollectionSummary,
   SavedResearchSessionSummary,
   SessionRecaptureLineage,
   SessionComparison,
@@ -31,10 +33,25 @@ type WorkspacePanelProps = {
   integrityReport: SessionIntegrityReport | null
   integrityOverview: { count: number; issueCount: number } | null
   statusMessage: string | null
+  collectionState: 'loading' | 'ready' | 'error'
+  collectionError: string
+  collections: ResearchCollectionSummary[]
+  activeCollection: ResearchCollection | null
+  collectionBusy: boolean
   onSearchChange: (value: string) => void
   onToggleIncludeArchived: (value: boolean) => void
   onQueryClassFilterChange: (value: ResearchBrief['query_class'] | 'all') => void
   onRefresh: () => void
+  onCollectionRefresh: () => void
+  onCollectionCreate: (payload: { title: string; summary?: string | null; notes?: string | null }) => void
+  onCollectionOpen: (collectionId: string) => void
+  onCollectionUpdate: (
+    collectionId: string,
+    payload: { title?: string; summary?: string | null; notes?: string | null }
+  ) => void
+  onCollectionAddActiveSession: () => void
+  onCollectionRemoveSession: (sessionId: string) => void
+  onCollectionReorderSession: (sessionId: string, direction: 'up' | 'down') => void
   onSaveCurrent: () => void
   onExportCurrentJson: () => void
   onExportCurrentMarkdown: () => void
@@ -85,10 +102,22 @@ export default function WorkspacePanel({
   integrityReport,
   integrityOverview,
   statusMessage,
+  collectionState,
+  collectionError,
+  collections,
+  activeCollection,
+  collectionBusy,
   onSearchChange,
   onToggleIncludeArchived,
   onQueryClassFilterChange,
   onRefresh,
+  onCollectionRefresh,
+  onCollectionCreate,
+  onCollectionOpen,
+  onCollectionUpdate,
+  onCollectionAddActiveSession,
+  onCollectionRemoveSession,
+  onCollectionReorderSession,
   onSaveCurrent,
   onExportCurrentJson,
   onExportCurrentMarkdown,
@@ -107,11 +136,23 @@ export default function WorkspacePanel({
 }: WorkspacePanelProps) {
   const [compareLeftId, setCompareLeftId] = useState('')
   const [compareRightId, setCompareRightId] = useState('')
+  const [newCollectionTitle, setNewCollectionTitle] = useState('')
+  const [newCollectionSummary, setNewCollectionSummary] = useState('')
+  const [newCollectionNotes, setNewCollectionNotes] = useState('')
+  const [editCollectionTitle, setEditCollectionTitle] = useState('')
+  const [editCollectionSummary, setEditCollectionSummary] = useState('')
+  const [editCollectionNotes, setEditCollectionNotes] = useState('')
 
   const compareOptions = useMemo(
     () => sessions.map((session) => ({ id: session.id, label: session.label || session.question })),
     [sessions]
   )
+
+  useEffect(() => {
+    setEditCollectionTitle(activeCollection?.title ?? '')
+    setEditCollectionSummary(activeCollection?.summary ?? '')
+    setEditCollectionNotes(activeCollection?.notes ?? '')
+  }, [activeCollection])
 
   function promptRename(session: SavedResearchSessionSummary): void {
     const promptValue = window.prompt('Rename saved session (optional label)', session.label ?? '')
@@ -128,6 +169,36 @@ export default function WorkspacePanel({
       return
     }
     onDelete(session.id)
+  }
+
+  function createCollectionFromForm(): void {
+    const title = newCollectionTitle.trim()
+    if (!title || collectionBusy) {
+      return
+    }
+    onCollectionCreate({
+      title,
+      summary: newCollectionSummary.trim() || null,
+      notes: newCollectionNotes.trim() || null,
+    })
+    setNewCollectionTitle('')
+    setNewCollectionSummary('')
+    setNewCollectionNotes('')
+  }
+
+  function saveCollectionDetails(): void {
+    if (!activeCollection || collectionBusy) {
+      return
+    }
+    const title = editCollectionTitle.trim()
+    if (!title) {
+      return
+    }
+    onCollectionUpdate(activeCollection.id, {
+      title,
+      summary: editCollectionSummary.trim() || null,
+      notes: editCollectionNotes.trim() || null,
+    })
   }
 
   return (
@@ -216,6 +287,205 @@ export default function WorkspacePanel({
           {statusMessage}
         </p>
       ) : null}
+
+      <div className="workspace-collections" data-testid="workspace-collections-panel">
+        <div className="workspace-collections-header">
+          <span className="block-label">COLLECTIONS</span>
+          <button
+            type="button"
+            data-testid="workspace-collections-refresh"
+            onClick={onCollectionRefresh}
+            disabled={collectionBusy}
+          >
+            Refresh
+          </button>
+        </div>
+
+        <div className="workspace-collections-create" data-testid="workspace-collections-create">
+          <input
+            type="text"
+            value={newCollectionTitle}
+            placeholder="Collection title"
+            data-testid="workspace-collection-create-title"
+            onChange={(event) => setNewCollectionTitle(event.target.value)}
+          />
+          <input
+            type="text"
+            value={newCollectionSummary}
+            placeholder="Summary (optional)"
+            data-testid="workspace-collection-create-summary"
+            onChange={(event) => setNewCollectionSummary(event.target.value)}
+          />
+          <textarea
+            value={newCollectionNotes}
+            placeholder="Notes (optional)"
+            data-testid="workspace-collection-create-notes"
+            onChange={(event) => setNewCollectionNotes(event.target.value)}
+          />
+          <button
+            type="button"
+            data-testid="workspace-collection-create-submit"
+            disabled={collectionBusy || !newCollectionTitle.trim()}
+            onClick={createCollectionFromForm}
+          >
+            {collectionBusy ? 'Working...' : 'Create Collection'}
+          </button>
+        </div>
+
+        {collectionState === 'loading' ? (
+          <div className="workspace-state" data-testid="workspace-collections-loading">
+            Loading collections...
+          </div>
+        ) : null}
+
+        {collectionState === 'error' ? (
+          <div className="workspace-state workspace-state-error" data-testid="workspace-collections-error">
+            {collectionError || 'Failed to load collections.'}
+          </div>
+        ) : null}
+
+        {collectionState === 'ready' && collections.length === 0 ? (
+          <div className="workspace-state" data-testid="workspace-collections-empty">
+            No collections yet.
+          </div>
+        ) : null}
+
+        {collectionState === 'ready' && collections.length > 0 ? (
+          <div className="workspace-collections-list" data-testid="workspace-collections-list">
+            {collections.map((collection, idx) => {
+              const isActive = activeCollection?.id === collection.id
+              return (
+                <button
+                  key={collection.id}
+                  type="button"
+                  className={isActive ? 'workspace-collection-item workspace-collection-item-active' : 'workspace-collection-item'}
+                  data-testid={`workspace-collection-open-${idx}`}
+                  onClick={() => onCollectionOpen(collection.id)}
+                >
+                  <span>{collection.title}</span>
+                  <span>{collection.session_count} session(s)</span>
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+
+        {activeCollection ? (
+          <div className="workspace-collection-detail" data-testid="workspace-collection-detail">
+            <p className="workspace-status" data-testid="workspace-collection-signature">
+              Signature: {activeCollection.collection_signature}
+            </p>
+            <div className="workspace-collections-edit-grid">
+              <input
+                type="text"
+                value={editCollectionTitle}
+                placeholder="Collection title"
+                data-testid="workspace-collection-edit-title"
+                onChange={(event) => setEditCollectionTitle(event.target.value)}
+              />
+              <input
+                type="text"
+                value={editCollectionSummary}
+                placeholder="Collection summary"
+                data-testid="workspace-collection-edit-summary"
+                onChange={(event) => setEditCollectionSummary(event.target.value)}
+              />
+              <textarea
+                value={editCollectionNotes}
+                placeholder="Collection notes"
+                data-testid="workspace-collection-edit-notes"
+                onChange={(event) => setEditCollectionNotes(event.target.value)}
+              />
+            </div>
+            <div className="workspace-collections-detail-actions">
+              <button
+                type="button"
+                data-testid="workspace-collection-save"
+                disabled={collectionBusy || !editCollectionTitle.trim()}
+                onClick={saveCollectionDetails}
+              >
+                Save Collection
+              </button>
+              <button
+                type="button"
+                data-testid="workspace-collection-add-active-session"
+                disabled={collectionBusy || !activeSavedSessionId}
+                onClick={onCollectionAddActiveSession}
+              >
+                Add Active Session
+              </button>
+            </div>
+            <p className="workspace-status" data-testid="workspace-collection-missing-count">
+              Missing sessions: {activeCollection.missing_session_count}
+            </p>
+
+            {activeCollection.timeline.length === 0 ? (
+              <div className="workspace-state" data-testid="workspace-collection-timeline-empty">
+                Collection timeline is empty.
+              </div>
+            ) : (
+              <div className="workspace-collection-timeline" data-testid="workspace-collection-timeline">
+                {activeCollection.timeline.map((item, idx) => {
+                  const label = item.label || item.question || item.session_id
+                  return (
+                    <article
+                      key={`${item.session_id}-${idx}`}
+                      className="workspace-collection-timeline-item"
+                      data-testid={`workspace-collection-timeline-item-${idx}`}
+                    >
+                      <header className="workspace-collection-timeline-header">
+                        <strong>{label}</strong>
+                        <span>{savedAtLabel(item.saved_at || '')}</span>
+                      </header>
+                      <p className="workspace-item-meta">
+                        {queryClassLabel(item.query_class)} | {item.evaluation_passed ? 'Eval PASS' : 'Eval n/a'}
+                      </p>
+                      <p className="workspace-item-snapshot-signature">
+                        Snapshot sig: {item.snapshot_signature ?? 'n/a'}
+                      </p>
+                      {!item.exists ? <p className="workspace-item-archived">Missing saved session</p> : null}
+                      <div className="workspace-item-actions">
+                        <button
+                          type="button"
+                          data-testid={`workspace-collection-reopen-${idx}`}
+                          disabled={!item.exists || collectionBusy}
+                          onClick={() => onReopen(item.session_id)}
+                        >
+                          Reopen
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`workspace-collection-move-up-${idx}`}
+                          disabled={idx === 0 || collectionBusy}
+                          onClick={() => onCollectionReorderSession(item.session_id, 'up')}
+                        >
+                          Move Up
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`workspace-collection-move-down-${idx}`}
+                          disabled={idx === activeCollection.timeline.length - 1 || collectionBusy}
+                          onClick={() => onCollectionReorderSession(item.session_id, 'down')}
+                        >
+                          Move Down
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`workspace-collection-remove-${idx}`}
+                          disabled={collectionBusy}
+                          onClick={() => onCollectionRemoveSession(item.session_id)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
 
       <div className="workspace-compare" data-testid="workspace-compare-panel">
         <span className="block-label">COMPARE</span>

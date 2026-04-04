@@ -339,6 +339,135 @@ Exports a self-contained bundle JSON payload with:
 - snapshot provenance metadata (`summary`, `sources`, `signature_sha256`)
 - provenance metadata (`source`, `app_version`, `model`, `mode`, `freshness_counts`, `snapshot_kind_counts`, `cache_lineage_counts`, `snapshot_signature`, `evaluation_signature`)
 
+### Research Collections (Wave 12)
+
+Collections are single-user, local notebooks that group saved sessions into ordered research timelines.
+
+### GET /api/v1/collections
+
+Lists collection summaries.
+
+Response:
+
+```json
+{
+  "collections": [
+    {
+      "id": "coll-20260404223000-a1b2c3d4",
+      "title": "Yield Curve Notebook",
+      "summary": "Threaded recession and event-probability sessions",
+      "session_count": 2,
+      "created_at": "2026-04-04T22:30:00Z",
+      "updated_at": "2026-04-04T22:34:00Z",
+      "collection_signature": "<sha256>"
+    }
+  ],
+  "count": 1
+}
+```
+
+### POST /api/v1/collections
+
+Creates a collection.
+
+Request:
+
+```json
+{
+  "title": "Yield Curve Notebook",
+  "summary": "Threaded recession and event-probability sessions",
+  "notes": "Track how policy odds evolve against the same evidence chain"
+}
+```
+
+### GET /api/v1/collections/{collection_id}
+
+Returns collection detail plus ordered timeline metadata for each session id.
+
+Response shape:
+
+```json
+{
+  "collection": {
+    "id": "coll-...",
+    "title": "...",
+    "summary": "...",
+    "notes": "...",
+    "session_ids": ["rs-a", "rs-b"],
+    "created_at": "...",
+    "updated_at": "...",
+    "collection_signature": "<sha256>"
+  },
+  "timeline": [
+    {
+      "session_id": "rs-a",
+      "exists": true,
+      "label": "Baseline",
+      "question": "...",
+      "query_class": "macro_outlook",
+      "saved_at": "...",
+      "evaluation_passed": true,
+      "snapshot_signature": "<sha256>",
+      "archived": false
+    }
+  ],
+  "missing_session_count": 0
+}
+```
+
+### PATCH /api/v1/collections/{collection_id}
+
+Updates collection title/summary/notes.
+
+Request body supports any subset of:
+
+- `title`
+- `summary`
+- `notes`
+
+### DELETE /api/v1/collections/{collection_id}
+
+Deletes a collection record.
+
+### POST /api/v1/collections/{collection_id}/sessions
+
+Adds a saved session to a collection.
+
+Request:
+
+```json
+{
+  "session_id": "rs-20260404223311-11223344",
+  "position": 0
+}
+```
+
+Notes:
+
+- `position` is optional; omission appends to end.
+- adding requires the target saved session to exist.
+
+### DELETE /api/v1/collections/{collection_id}/sessions/{session_id}
+
+Removes a session from the collection.
+
+### PUT /api/v1/collections/{collection_id}/sessions/reorder
+
+Reorders the entire collection timeline.
+
+Request:
+
+```json
+{
+  "session_ids": ["rs-b", "rs-a"]
+}
+```
+
+Validation rules:
+
+- The reordered list must contain exactly the same session ids as current collection contents.
+- Duplicate session ids are rejected.
+
 ### GET /api/v1/screener
 
 Returns ranked dislocation contracts from fixture-backed snapshot in demo mode.

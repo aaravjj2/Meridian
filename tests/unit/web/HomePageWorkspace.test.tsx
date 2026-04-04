@@ -253,6 +253,43 @@ const savedRecordTwo = {
   updated_at: '2026-04-03T10:06:00Z',
 } as const
 
+const collectionSummary = {
+  id: 'coll-20260403110000-abcd1234',
+  title: 'Macro Notebook',
+  summary: 'Session thread',
+  session_count: 1,
+  created_at: '2026-04-03T11:00:00Z',
+  updated_at: '2026-04-03T11:00:00Z',
+  collection_signature: 'collection-sig-001',
+} as const
+
+const collectionDetail = {
+  collection: {
+    id: collectionSummary.id,
+    title: collectionSummary.title,
+    summary: collectionSummary.summary,
+    notes: 'Initial notes',
+    session_ids: [savedSummary.id],
+    created_at: collectionSummary.created_at,
+    updated_at: collectionSummary.updated_at,
+    collection_signature: collectionSummary.collection_signature,
+  },
+  timeline: [
+    {
+      session_id: savedSummary.id,
+      exists: true,
+      label: savedSummary.label,
+      question: savedSummary.question,
+      query_class: savedSummary.query_class,
+      saved_at: savedSummary.saved_at,
+      evaluation_passed: true,
+      snapshot_signature: savedSummary.snapshot_signature,
+      archived: false,
+    },
+  ],
+  missing_session_count: 0,
+} as const
+
 describe('HomePage workspace persistence', () => {
   it('renders workspace loading and empty states', async () => {
     server.use(
@@ -272,7 +309,8 @@ describe('HomePage workspace persistence', () => {
       http.get('/api/v1/research/sessions', async () => {
         await new Promise((resolve) => setTimeout(resolve, 20))
         return HttpResponse.json({ sessions: [], count: 0 })
-      })
+      }),
+      http.get('/api/v1/collections', () => HttpResponse.json({ collections: [], count: 0 }))
     )
 
     render(<HomePage />)
@@ -338,7 +376,8 @@ describe('HomePage workspace persistence', () => {
             'content-disposition': 'attachment; filename=rs-saved-copy.json',
           },
         })
-      })
+      }),
+      http.get('/api/v1/collections', () => HttpResponse.json({ collections: [], count: 0 }))
     )
 
     render(<HomePage />)
@@ -628,7 +667,8 @@ describe('HomePage workspace persistence', () => {
           return HttpResponse.json(savedRecordTwo)
         }
         return HttpResponse.json(savedRecord)
-      })
+      }),
+      http.get('/api/v1/collections', () => HttpResponse.json({ collections: [], count: 0 }))
     )
 
     render(<HomePage />)
@@ -676,6 +716,219 @@ describe('HomePage workspace persistence', () => {
     })
     await waitFor(() => {
       expect(screen.getByText('Second saved macro question')).toBeInTheDocument()
+    })
+  })
+
+  it('supports collection create, timeline management, reorder, and reopen actions', async () => {
+    const sessionById: Record<string, any> = {
+      [savedSummary.id]: savedSummary,
+      [savedSummaryTwo.id]: savedSummaryTwo,
+    }
+    const fullRecordById: Record<string, any> = {
+      [savedSummary.id]: savedRecord,
+      [savedSummaryTwo.id]: savedRecordTwo,
+    }
+
+    let detail: any = {
+      ...collectionDetail,
+      collection: {
+        ...collectionDetail.collection,
+        session_ids: [],
+      },
+      timeline: [],
+      missing_session_count: 0,
+    }
+    let listPayload: Array<any> = []
+    let patchCalls = 0
+    let reorderCalls = 0
+
+    const syncListFromDetail = () => {
+      listPayload = [
+        {
+          ...collectionSummary,
+          id: detail.collection.id,
+          title: detail.collection.title,
+          summary: detail.collection.summary,
+          session_count: detail.collection.session_ids.length,
+          updated_at: detail.collection.updated_at,
+          collection_signature: detail.collection.collection_signature,
+        },
+      ]
+    }
+
+    const rebuildTimeline = () => {
+      detail = {
+        ...detail,
+        timeline: detail.collection.session_ids.map((sessionId) => ({
+          session_id: sessionId,
+          exists: true,
+          label: sessionById[sessionId].label ?? null,
+          question: sessionById[sessionId].question,
+          query_class: sessionById[sessionId].query_class,
+          saved_at: sessionById[sessionId].saved_at,
+          evaluation_passed: true,
+          snapshot_signature: sessionById[sessionId].snapshot_signature ?? null,
+          archived: false,
+        })),
+      }
+    }
+
+    server.use(
+      http.get('/api/v1/regime', () =>
+        HttpResponse.json({
+          dimensions: {
+            growth: 'EXPANSION',
+            inflation: 'ELEVATED',
+            monetary: 'RESTRICTIVE',
+            credit: 'CAUTION',
+            labor: 'TIGHT',
+          },
+          narrative: 'n',
+          updated_at: '2026-04-03T10:00:00Z',
+        })
+      ),
+      http.get('/api/v1/research/sessions', () => HttpResponse.json({ sessions: [savedSummary, savedSummaryTwo], count: 2 })),
+      http.get('/api/v1/research/sessions/:savedId', ({ params }) => {
+        return HttpResponse.json(fullRecordById[String(params.savedId)])
+      }),
+      http.get('/api/v1/collections', () => HttpResponse.json({ collections: listPayload, count: listPayload.length })),
+      http.post('/api/v1/collections', async ({ request }) => {
+        const body = (await request.json()) as { title: string; summary?: string; notes?: string }
+        detail = {
+          ...detail,
+          collection: {
+            ...detail.collection,
+            id: 'coll-20260403113000-zz001122',
+            title: body.title,
+            summary: body.summary ?? null,
+            notes: body.notes ?? null,
+            session_ids: [],
+            updated_at: '2026-04-03T11:30:00Z',
+            collection_signature: 'collection-sig-created',
+          },
+          timeline: [],
+          missing_session_count: 0,
+        }
+        syncListFromDetail()
+        return HttpResponse.json(detail)
+      }),
+      http.get('/api/v1/collections/:collectionId', () => HttpResponse.json(detail)),
+      http.patch('/api/v1/collections/:collectionId', async ({ request }) => {
+        patchCalls += 1
+        const body = (await request.json()) as { title?: string; summary?: string | null; notes?: string | null }
+        detail = {
+          ...detail,
+          collection: {
+            ...detail.collection,
+            title: body.title ?? detail.collection.title,
+            summary: body.summary ?? null,
+            notes: body.notes ?? null,
+            updated_at: '2026-04-03T11:31:00Z',
+            collection_signature: 'collection-sig-updated',
+          },
+        }
+        syncListFromDetail()
+        return HttpResponse.json(detail)
+      }),
+      http.post('/api/v1/collections/:collectionId/sessions', async ({ request }) => {
+        const body = (await request.json()) as { session_id: string; position?: number }
+        const next = [...detail.collection.session_ids]
+        if (!next.includes(body.session_id)) {
+          if (typeof body.position === 'number' && body.position >= 0 && body.position <= next.length) {
+            next.splice(body.position, 0, body.session_id)
+          } else {
+            next.push(body.session_id)
+          }
+        }
+        detail = {
+          ...detail,
+          collection: {
+            ...detail.collection,
+            session_ids: next,
+            updated_at: '2026-04-03T11:32:00Z',
+            collection_signature: `collection-sig-${next.join('-')}`,
+          },
+        }
+        rebuildTimeline()
+        syncListFromDetail()
+        return HttpResponse.json(detail)
+      }),
+      http.delete('/api/v1/collections/:collectionId/sessions/:sessionId', ({ params }) => {
+        detail = {
+          ...detail,
+          collection: {
+            ...detail.collection,
+            session_ids: detail.collection.session_ids.filter((sessionId) => sessionId !== String(params.sessionId)),
+            updated_at: '2026-04-03T11:33:00Z',
+            collection_signature: 'collection-sig-removed',
+          },
+        }
+        rebuildTimeline()
+        syncListFromDetail()
+        return HttpResponse.json(detail)
+      }),
+      http.put('/api/v1/collections/:collectionId/sessions/reorder', async ({ request }) => {
+        reorderCalls += 1
+        const body = (await request.json()) as { session_ids: string[] }
+        detail = {
+          ...detail,
+          collection: {
+            ...detail.collection,
+            session_ids: body.session_ids,
+            updated_at: '2026-04-03T11:34:00Z',
+            collection_signature: `collection-sig-${body.session_ids.join('-')}`,
+          },
+        }
+        rebuildTimeline()
+        syncListFromDetail()
+        return HttpResponse.json(detail)
+      })
+    )
+
+    render(<HomePage />)
+
+    expect(await screen.findByTestId('workspace-collections-empty')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByTestId('workspace-collection-create-title'), {
+      target: { value: 'Macro Notebook' },
+    })
+    fireEvent.change(screen.getByTestId('workspace-collection-create-summary'), {
+      target: { value: 'Threaded sessions' },
+    })
+    fireEvent.click(screen.getByTestId('workspace-collection-create-submit'))
+
+    expect(await screen.findByTestId('workspace-collection-detail')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-collection-timeline-empty')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByTestId('workspace-collection-edit-notes'), {
+      target: { value: 'Updated notes for this notebook' },
+    })
+    fireEvent.click(screen.getByTestId('workspace-collection-save'))
+    await waitFor(() => {
+      expect(patchCalls).toBe(1)
+    })
+
+    fireEvent.click(screen.getByTestId('workspace-reopen-0'))
+    expect(await screen.findByTestId('brief-complete')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('workspace-collection-add-active-session'))
+    expect(await screen.findByTestId('workspace-collection-timeline-item-0')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-reopen-1'))
+    expect(await screen.findByTestId('brief-complete')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('workspace-collection-add-active-session'))
+    expect(await screen.findByTestId('workspace-collection-timeline-item-1')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-collection-move-up-1'))
+    await waitFor(() => {
+      expect(reorderCalls).toBe(1)
+    })
+
+    fireEvent.click(screen.getByTestId('workspace-collection-reopen-0'))
+    expect(await screen.findByTestId('brief-complete')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-collection-remove-0'))
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-collection-timeline-item-0')).toBeInTheDocument()
     })
   })
 })

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from dataclasses import dataclass
@@ -21,7 +22,8 @@ def _tokenize(text: str) -> list[str]:
 def _embed(text: str, dims: int = 32) -> list[float]:
     vector = [0.0] * dims
     for token in _tokenize(text):
-        vector[hash(token) % dims] += 1.0
+        bucket = int(hashlib.sha256(token.encode("utf-8")).hexdigest()[:8], 16) % dims
+        vector[bucket] += 1.0
     norm = math.sqrt(sum(v * v for v in vector))
     if norm == 0.0:
         return vector

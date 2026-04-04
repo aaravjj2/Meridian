@@ -318,7 +318,10 @@ class ResearchCollection(BaseModel):
     @field_validator("title")
     @classmethod
     def normalize_title(cls, value: str) -> str:
-        return value.strip()
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("title must be non-empty")
+        return cleaned
 
     @field_validator("summary", "notes")
     @classmethod
@@ -344,11 +347,45 @@ class CreateCollectionRequest(BaseModel):
     summary: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=2000)
 
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("title must be non-empty")
+        return cleaned
+
+    @field_validator("summary", "notes")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
 
 class UpdateCollectionRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
     summary: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("title must be non-empty")
+        return cleaned
+
+    @field_validator("summary", "notes")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class AddSessionToCollectionRequest(BaseModel):
@@ -358,3 +395,21 @@ class AddSessionToCollectionRequest(BaseModel):
 
 class ReorderCollectionSessionsRequest(BaseModel):
     session_ids: list[str] = Field(min_length=1)
+
+
+class ResearchCollectionTimelineEntry(BaseModel):
+    session_id: str
+    exists: bool
+    label: str | None = None
+    question: str | None = None
+    query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None = None
+    saved_at: str | None = None
+    evaluation_passed: bool | None = None
+    snapshot_signature: str | None = None
+    archived: bool | None = None
+
+
+class ResearchCollectionDetail(BaseModel):
+    collection: ResearchCollection
+    timeline: list[ResearchCollectionTimelineEntry] = Field(default_factory=list)
+    missing_session_count: int = 0

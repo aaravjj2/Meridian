@@ -250,6 +250,66 @@ Canonical signature notes:
 - `snapshot_provenance: { summary, sources, signature_sha256 }`
 - `provenance: { source, app_version, model, mode, freshness_counts, snapshot_kind_counts, cache_lineage_counts, snapshot_signature, evaluation_signature }`
 
+## ResearchCollection
+
+- `id: str` (must start with `coll-`)
+- `title: str` (1..120 chars, trimmed, non-empty)
+- `summary: str | null` (trimmed, max 500)
+- `notes: str | null` (trimmed, max 2000)
+- `session_ids: list[str]` (ordered timeline of saved session ids)
+- `created_at: str (ISO)`
+- `updated_at: str (ISO)`
+- `collection_signature: str` (deterministic SHA256 over title/summary/notes/session_ids)
+
+## ResearchCollectionSummary
+
+- `id: str`
+- `title: str`
+- `summary: str | null`
+- `session_count: int`
+- `created_at: str (ISO)`
+- `updated_at: str (ISO)`
+- `collection_signature: str`
+
+## CreateCollectionRequest
+
+- `title: str` (required, trimmed, non-empty)
+- `summary: str | null` (optional)
+- `notes: str | null` (optional)
+
+## UpdateCollectionRequest
+
+- `title: str | null` (optional, trimmed, non-empty when present)
+- `summary: str | null` (optional)
+- `notes: str | null` (optional)
+
+## AddSessionToCollectionRequest
+
+- `session_id: str` (saved-session id)
+- `position: int | null` (optional insert index)
+
+## ReorderCollectionSessionsRequest
+
+- `session_ids: list[str]` (must contain exactly the current collection contents, no duplicates)
+
+## ResearchCollectionTimelineEntry
+
+- `session_id: str`
+- `exists: bool` (false when collection references a missing deleted session)
+- `label: str | null`
+- `question: str | null`
+- `query_class: "macro_outlook" | "event_probability" | "ticker_macro" | null`
+- `saved_at: str | null`
+- `evaluation_passed: bool | null`
+- `snapshot_signature: str | null`
+- `archived: bool | null`
+
+## ResearchCollectionDetail
+
+- `collection: ResearchCollection`
+- `timeline: list[ResearchCollectionTimelineEntry]`
+- `missing_session_count: int`
+
 ## MispricingScore
 
 - `market_id: str`

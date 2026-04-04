@@ -1,0 +1,16 @@
+$ npm run vitest -- --reporter=json --outputFile /home/aarav/Aarav/Meridian/artifacts/harness/2026-04-04T22-41-42Z/vitest-report.json
+
+--- STDOUT ---
+
+> vitest
+> vitest run --config vitest.config.ts --reporter=json --outputFile /home/aarav/Aarav/Meridian/artifacts/harness/2026-04-04T22-41-42Z/vitest-report.json
+
+JSON report written to /home/aarav/Aarav/Meridian/artifacts/harness/2026-04-04T22-41-42Z/vitest-report.json
+
+
+--- STDERR ---
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+
+exit_code=0
+duration_ms=5618

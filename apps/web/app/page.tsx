@@ -12,6 +12,8 @@ import TracePanel from '@/components/Terminal/TracePanel'
 import WorkspacePanel from '@/components/Terminal/WorkspacePanel'
 import type {
   EvidenceNavigationState,
+  ResearchCollection,
+  ResearchCollectionSummary,
   ResearchEvaluationReport,
   ResearchBrief,
   SessionRecaptureLineage,
@@ -464,6 +466,111 @@ async function getWorkspaceIntegrity(options?: { search?: string; includeArchive
   return payload.reports ?? []
 }
 
+type CollectionDetailResponse = {
+  collection: Omit<ResearchCollection, 'timeline' | 'missing_session_count'>
+  timeline?: ResearchCollection['timeline']
+  missing_session_count?: number
+}
+
+function normalizeCollectionDetail(payload: CollectionDetailResponse | ResearchCollection): ResearchCollection {
+  if ('collection' in payload) {
+    return {
+      ...payload.collection,
+      timeline: payload.timeline ?? [],
+      missing_session_count: payload.missing_session_count ?? 0,
+    }
+  }
+  return payload
+}
+
+async function listCollections(): Promise<ResearchCollectionSummary[]> {
+  const response = await fetch('/api/v1/collections')
+  if (!response.ok) {
+    throw new Error(`Failed to list collections: ${response.status}`)
+  }
+  const payload = (await response.json()) as { collections?: ResearchCollectionSummary[] }
+  return payload.collections ?? []
+}
+
+async function createCollection(payload: {
+  title: string
+  summary?: string | null
+  notes?: string | null
+}): Promise<ResearchCollection> {
+  const response = await fetch('/api/v1/collections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to create collection: ${response.status}`)
+  }
+  return normalizeCollectionDetail((await response.json()) as CollectionDetailResponse | ResearchCollection)
+}
+
+async function getCollection(collectionId: string): Promise<ResearchCollection> {
+  const response = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}`)
+  if (!response.ok) {
+    throw new Error(`Failed to load collection: ${response.status}`)
+  }
+  return normalizeCollectionDetail((await response.json()) as CollectionDetailResponse | ResearchCollection)
+}
+
+async function updateCollection(
+  collectionId: string,
+  payload: { title?: string; summary?: string | null; notes?: string | null }
+): Promise<ResearchCollection> {
+  const response = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to update collection: ${response.status}`)
+  }
+  return normalizeCollectionDetail((await response.json()) as CollectionDetailResponse | ResearchCollection)
+}
+
+async function addSessionToCollection(
+  collectionId: string,
+  payload: { session_id: string; position?: number }
+): Promise<ResearchCollection> {
+  const response = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to add session to collection: ${response.status}`)
+  }
+  return normalizeCollectionDetail((await response.json()) as CollectionDetailResponse | ResearchCollection)
+}
+
+async function removeSessionFromCollection(collectionId: string, sessionId: string): Promise<ResearchCollection> {
+  const response = await fetch(
+    `/api/v1/collections/${encodeURIComponent(collectionId)}/sessions/${encodeURIComponent(sessionId)}`,
+    {
+      method: 'DELETE',
+    }
+  )
+  if (!response.ok) {
+    throw new Error(`Failed to remove session from collection: ${response.status}`)
+  }
+  return normalizeCollectionDetail((await response.json()) as CollectionDetailResponse | ResearchCollection)
+}
+
+async function reorderCollectionSessions(collectionId: string, sessionIds: string[]): Promise<ResearchCollection> {
+  const response = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/sessions/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_ids: sessionIds }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to reorder collection sessions: ${response.status}`)
+  }
+  return normalizeCollectionDetail((await response.json()) as CollectionDetailResponse | ResearchCollection)
+}
+
 async function exportSavedSession(savedId: string, format: 'json' | 'markdown'): Promise<Response> {
   const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}/export?format=${format}`)
   if (!response.ok) {
@@ -534,12 +641,18 @@ export default function HomePage() {
   const [recaptureLineage, setRecaptureLineage] = useState<SessionRecaptureLineage | null>(null)
   const [integrityReport, setIntegrityReport] = useState<SessionIntegrityReport | null>(null)
   const [integrityOverview, setIntegrityOverview] = useState<{ count: number; issueCount: number } | null>(null)
+  const [collectionsState, setCollectionsState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [collectionsError, setCollectionsError] = useState('')
+  const [collections, setCollections] = useState<ResearchCollectionSummary[]>([])
+  const [activeCollection, setActiveCollection] = useState<ResearchCollection | null>(null)
+  const [collectionBusy, setCollectionBusy] = useState(false)
   const [evidenceState, setEvidenceState] = useState<EvidenceNavigationState>(EMPTY_EVIDENCE_STATE)
   const [evaluation, setEvaluation] = useState<ResearchEvaluationReport | null>(null)
   const [evidenceHydrationKey, setEvidenceHydrationKey] = useState(0)
 
   const canSaveCurrent = briefState === 'complete' && !!brief && traceSteps.length > 0 && !running
   const canExportCurrent = canSaveCurrent || !!activeSavedSessionId
+  const activeCollectionId = activeCollection?.id ?? null
 
   const handleEvidenceStateChange = useCallback((state: EvidenceNavigationState) => {
     setEvidenceState((previous) => {
@@ -587,6 +700,192 @@ export default function HomePage() {
   useEffect(() => {
     void loadWorkspaceSessions()
   }, [loadWorkspaceSessions])
+
+  const collectionSummaryFromDetail = useCallback(
+    (collection: ResearchCollection): ResearchCollectionSummary => ({
+      id: collection.id,
+      title: collection.title,
+      summary: collection.summary,
+      session_count: collection.session_ids.length,
+      created_at: collection.created_at,
+      updated_at: collection.updated_at,
+      collection_signature: collection.collection_signature,
+    }),
+    []
+  )
+
+  const upsertCollectionSummary = useCallback(
+    (collection: ResearchCollection) => {
+      const summary = collectionSummaryFromDetail(collection)
+      setCollections((previous) => {
+        const others = previous.filter((item) => item.id !== summary.id)
+        return [summary, ...others].sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+      })
+    },
+    [collectionSummaryFromDetail]
+  )
+
+  const refreshCollections = useCallback(
+    async (preferredCollectionId?: string | null) => {
+      setCollectionsState('loading')
+      setCollectionsError('')
+      try {
+        const listed = await listCollections()
+        setCollections(listed)
+
+        const candidateId =
+          preferredCollectionId !== undefined
+            ? preferredCollectionId
+            : activeCollectionId && listed.some((item) => item.id === activeCollectionId)
+              ? activeCollectionId
+              : listed[0]?.id ?? null
+
+        if (!candidateId) {
+          setActiveCollection(null)
+          setCollectionsState('ready')
+          return
+        }
+
+        const detail = await getCollection(candidateId)
+        setActiveCollection(detail)
+        setCollectionsState('ready')
+      } catch (collectionError) {
+        setCollectionsState('error')
+        setCollectionsError(collectionError instanceof Error ? collectionError.message : 'Failed to load collections')
+      }
+    },
+    [activeCollectionId]
+  )
+
+  useEffect(() => {
+    void refreshCollections()
+  }, [refreshCollections])
+
+  const createCollectionByPayload = useCallback(
+    async (payload: { title: string; summary?: string | null; notes?: string | null }) => {
+      setCollectionBusy(true)
+      try {
+        const created = await createCollection(payload)
+        upsertCollectionSummary(created)
+        setActiveCollection(created)
+        setCollectionsState('ready')
+        setWorkspaceStatus(`Created collection ${created.id}`)
+      } catch (collectionError) {
+        setWorkspaceStatus(collectionError instanceof Error ? collectionError.message : 'Failed to create collection')
+      } finally {
+        setCollectionBusy(false)
+      }
+    },
+    [upsertCollectionSummary]
+  )
+
+  const openCollectionById = useCallback(async (collectionId: string) => {
+    setCollectionBusy(true)
+    try {
+      const detail = await getCollection(collectionId)
+      setActiveCollection(detail)
+      setWorkspaceStatus(`Opened collection ${detail.id}`)
+    } catch (collectionError) {
+      setWorkspaceStatus(collectionError instanceof Error ? collectionError.message : 'Failed to open collection')
+    } finally {
+      setCollectionBusy(false)
+    }
+  }, [])
+
+  const updateCollectionById = useCallback(
+    async (collectionId: string, payload: { title?: string; summary?: string | null; notes?: string | null }) => {
+      setCollectionBusy(true)
+      try {
+        const updated = await updateCollection(collectionId, payload)
+        upsertCollectionSummary(updated)
+        setActiveCollection(updated)
+        setWorkspaceStatus(`Updated collection ${updated.id}`)
+      } catch (collectionError) {
+        setWorkspaceStatus(collectionError instanceof Error ? collectionError.message : 'Failed to update collection')
+      } finally {
+        setCollectionBusy(false)
+      }
+    },
+    [upsertCollectionSummary]
+  )
+
+  const addActiveSessionToCurrentCollection = useCallback(async () => {
+    if (!activeCollection) {
+      setWorkspaceStatus('Select a collection before adding sessions.')
+      return
+    }
+    if (!activeSavedSessionId) {
+      setWorkspaceStatus('No active saved session available to add.')
+      return
+    }
+
+    setCollectionBusy(true)
+    try {
+      const updated = await addSessionToCollection(activeCollection.id, { session_id: activeSavedSessionId })
+      upsertCollectionSummary(updated)
+      setActiveCollection(updated)
+      setWorkspaceStatus(`Added ${activeSavedSessionId} to ${updated.title}`)
+    } catch (collectionError) {
+      setWorkspaceStatus(collectionError instanceof Error ? collectionError.message : 'Failed to add session to collection')
+    } finally {
+      setCollectionBusy(false)
+    }
+  }, [activeCollection, activeSavedSessionId, upsertCollectionSummary])
+
+  const removeSessionFromCurrentCollection = useCallback(
+    async (sessionIdToRemove: string) => {
+      if (!activeCollection) {
+        return
+      }
+      setCollectionBusy(true)
+      try {
+        const updated = await removeSessionFromCollection(activeCollection.id, sessionIdToRemove)
+        upsertCollectionSummary(updated)
+        setActiveCollection(updated)
+        setWorkspaceStatus(`Removed ${sessionIdToRemove} from ${updated.title}`)
+      } catch (collectionError) {
+        setWorkspaceStatus(collectionError instanceof Error ? collectionError.message : 'Failed to remove session')
+      } finally {
+        setCollectionBusy(false)
+      }
+    },
+    [activeCollection, upsertCollectionSummary]
+  )
+
+  const reorderSessionInCurrentCollection = useCallback(
+    async (sessionIdToMove: string, direction: 'up' | 'down') => {
+      if (!activeCollection) {
+        return
+      }
+      const currentOrder = [...activeCollection.session_ids]
+      const currentIndex = currentOrder.indexOf(sessionIdToMove)
+      if (currentIndex === -1) {
+        return
+      }
+      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+      if (targetIndex < 0 || targetIndex >= currentOrder.length) {
+        return
+      }
+
+      ;[currentOrder[currentIndex], currentOrder[targetIndex]] = [
+        currentOrder[targetIndex],
+        currentOrder[currentIndex],
+      ]
+
+      setCollectionBusy(true)
+      try {
+        const updated = await reorderCollectionSessions(activeCollection.id, currentOrder)
+        upsertCollectionSummary(updated)
+        setActiveCollection(updated)
+        setWorkspaceStatus(`Reordered collection ${updated.title}`)
+      } catch (collectionError) {
+        setWorkspaceStatus(collectionError instanceof Error ? collectionError.message : 'Failed to reorder collection')
+      } finally {
+        setCollectionBusy(false)
+      }
+    },
+    [activeCollection, upsertCollectionSummary]
+  )
 
   const saveCurrentSession = useCallback(
     async (options?: { silent?: boolean }): Promise<SavedResearchSession | null> => {
@@ -954,11 +1253,37 @@ export default function HomePage() {
               integrityReport={integrityReport}
               integrityOverview={integrityOverview}
               statusMessage={workspaceStatus}
+              collectionState={collectionsState}
+              collectionError={collectionsError}
+              collections={collections}
+              activeCollection={activeCollection}
+              collectionBusy={collectionBusy}
               onSearchChange={setWorkspaceSearch}
               onToggleIncludeArchived={setIncludeArchived}
               onQueryClassFilterChange={setQueryClassFilter}
               onRefresh={() => {
                 void loadWorkspaceSessions()
+              }}
+              onCollectionRefresh={() => {
+                void refreshCollections(activeCollectionId)
+              }}
+              onCollectionCreate={(payload) => {
+                void createCollectionByPayload(payload)
+              }}
+              onCollectionOpen={(collectionId) => {
+                void openCollectionById(collectionId)
+              }}
+              onCollectionUpdate={(collectionId, payload) => {
+                void updateCollectionById(collectionId, payload)
+              }}
+              onCollectionAddActiveSession={() => {
+                void addActiveSessionToCurrentCollection()
+              }}
+              onCollectionRemoveSession={(sessionIdToRemove) => {
+                void removeSessionFromCurrentCollection(sessionIdToRemove)
+              }}
+              onCollectionReorderSession={(sessionIdToMove, direction) => {
+                void reorderSessionInCurrentCollection(sessionIdToMove, direction)
               }}
               onSaveCurrent={() => {
                 void saveCurrentSession()
