@@ -16,6 +16,8 @@ import type {
   ResearchCollectionSummary,
   ResearchEvaluationReport,
   ResearchBrief,
+  ResearchTemplateDefinition,
+  ResearchTemplateId,
   SessionRecaptureLineage,
   SessionRecaptureResult,
   SessionComparison,
@@ -31,6 +33,7 @@ type SaveResearchSessionRequest = {
   mode: 'demo' | 'live'
   session_id: string
   label?: string | null
+  template_id?: ResearchTemplateId | null
   brief: ResearchBrief
   trace_events: TraceEvent[]
   evidence_state: EvidenceNavigationState | null
@@ -105,6 +108,45 @@ const FALLBACK_EVENTS: TraceEvent[] = [
   },
 ]
 
+const FALLBACK_RESEARCH_TEMPLATES: ResearchTemplateDefinition[] = [
+  {
+    id: 'macro_outlook',
+    title: 'Macro outlook',
+    description: 'Build a balanced macro baseline with explicit bull, bear, and risk structure.',
+    framing: 'Start from cycle position, inflation trend, and policy stance before sizing risk.',
+    query_class_default: 'macro_outlook',
+    emphasis: ['Cycle and regime interpretation', 'Cross-check inflation, growth, and credit', 'Translate evidence into scenario odds'],
+    evaluation_expectations: ['At least one macro signal conflict is surfaced', 'Freshness and snapshot provenance checks pass'],
+  },
+  {
+    id: 'event_probability_interpretation',
+    title: 'Event probability interpretation',
+    description: 'Interpret market-implied event odds against macro evidence and policy context.',
+    framing: 'Start from priced probabilities, then test whether macro inputs justify that pricing.',
+    query_class_default: 'event_probability',
+    emphasis: ['Cross-venue probability consistency', 'Macro validation of priced odds', 'Repricing and communication tail risks'],
+    evaluation_expectations: ['Event-odds claims map to market sources', 'Confidence rationale discusses timing risk'],
+  },
+  {
+    id: 'ticker_macro_framing',
+    title: 'Ticker + macro framing',
+    description: 'Blend single-name or sector positioning with macro and credit regime overlays.',
+    framing: 'Combine bottom-up fundamental context with top-down macro risk budgeting.',
+    query_class_default: 'ticker_macro',
+    emphasis: ['Fundamental versus macro tension', 'Credit and policy sensitivity', 'Positioning risk controls'],
+    evaluation_expectations: ['Thesis references both ticker and macro evidence', 'Conflict section captures bottom-up vs top-down tension'],
+  },
+  {
+    id: 'thesis_change_compare',
+    title: 'Compare old vs new thesis',
+    description: 'Update or challenge a prior thesis and make deltas explicit for auditability.',
+    framing: 'Anchor on prior thesis context, then highlight what changed and why.',
+    query_class_default: 'macro_outlook',
+    emphasis: ['Prior-vs-current thesis deltas', 'Evidence that changed confidence', 'Explicit conflict and risk updates'],
+    evaluation_expectations: ['Follow-up context is present when available', 'Delta-oriented reasoning is reflected in thesis narrative'],
+  },
+]
+
 function classifyQuery(question: string): ResearchBrief['query_class'] {
   const lowered = question.toLowerCase()
   const upper = question.toUpperCase()
@@ -125,11 +167,17 @@ function classifyQuery(question: string): ResearchBrief['query_class'] {
   return 'macro_outlook'
 }
 
-function fallbackBrief(question: string, priorQuestion: string | null): ResearchBrief {
-  const queryClass = classifyQuery(question)
+function fallbackBrief(
+  question: string,
+  priorQuestion: string | null,
+  template: ResearchTemplateDefinition
+): ResearchBrief {
+  const queryClass = template.query_class_default ?? classifyQuery(question)
   return {
     question,
     query_class: queryClass,
+    template_id: template.id,
+    template_title: template.title,
     follow_up_context: priorQuestion ? `Follow-up to prior question: ${priorQuestion}` : null,
     thesis:
       queryClass === 'event_probability'
@@ -304,12 +352,13 @@ function fallbackBrief(question: string, priorQuestion: string | null): Research
 async function streamResearch(
   question: string,
   sessionId: string | null,
+  templateId: ResearchTemplateId,
   onEvent: (step: TraceEvent) => void
 ): Promise<void> {
   const response = await fetch('/api/v1/research', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, mode: 'demo', session_id: sessionId ?? undefined }),
+    body: JSON.stringify({ question, mode: 'demo', session_id: sessionId ?? undefined, template_id: templateId }),
   })
 
   if (!response.ok) {
@@ -367,6 +416,15 @@ async function listSavedSessions(options?: ListSavedSessionsOptions): Promise<Sa
   }
   const payload = (await response.json()) as { sessions?: SavedResearchSessionSummary[] }
   return payload.sessions ?? []
+}
+
+async function listResearchTemplates(): Promise<ResearchTemplateDefinition[]> {
+  const response = await fetch('/api/v1/research/templates')
+  if (!response.ok) {
+    throw new Error(`Failed to load research templates: ${response.status}`)
+  }
+  const payload = (await response.json()) as { templates?: ResearchTemplateDefinition[] }
+  return payload.templates ?? []
 }
 
 async function saveSession(payload: SaveResearchSessionRequest): Promise<SavedResearchSession> {
@@ -674,6 +732,12 @@ export default function HomePage() {
   const [evidenceState, setEvidenceState] = useState<EvidenceNavigationState>(EMPTY_EVIDENCE_STATE)
   const [evaluation, setEvaluation] = useState<ResearchEvaluationReport | null>(null)
   const [evidenceHydrationKey, setEvidenceHydrationKey] = useState(0)
+  const [templateState, setTemplateState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [templateError, setTemplateError] = useState('')
+  const [researchTemplates, setResearchTemplates] = useState<ResearchTemplateDefinition[]>(FALLBACK_RESEARCH_TEMPLATES)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<ResearchTemplateId>('macro_outlook')
+
+  const activeTemplate = researchTemplates.find((item) => item.id === selectedTemplateId) ?? FALLBACK_RESEARCH_TEMPLATES[0]
 
   const canSaveCurrent = briefState === 'complete' && !!brief && traceSteps.length > 0 && !running
   const canExportCurrent = canSaveCurrent || !!activeSavedSessionId
@@ -725,6 +789,40 @@ export default function HomePage() {
   useEffect(() => {
     void loadWorkspaceSessions()
   }, [loadWorkspaceSessions])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadTemplates() {
+      setTemplateState('loading')
+      setTemplateError('')
+      try {
+        const templates = await listResearchTemplates()
+        if (!active) {
+          return
+        }
+        if (templates.length > 0) {
+          setResearchTemplates(templates)
+          setSelectedTemplateId((previous) => {
+            return templates.some((item) => item.id === previous) ? previous : templates[0].id
+          })
+        }
+        setTemplateState('ready')
+      } catch (templatesError) {
+        if (!active) {
+          return
+        }
+        setResearchTemplates(FALLBACK_RESEARCH_TEMPLATES)
+        setTemplateState('error')
+        setTemplateError(templatesError instanceof Error ? templatesError.message : 'Failed to load templates')
+      }
+    }
+
+    void loadTemplates()
+    return () => {
+      active = false
+    }
+  }, [])
 
   const collectionSummaryFromDetail = useCallback(
     (collection: ResearchCollection): ResearchCollectionSummary => ({
@@ -952,6 +1050,7 @@ export default function HomePage() {
           question: brief.question || lastQuery,
           mode: 'demo',
           session_id: sessionId ?? 'local-demo',
+          template_id: brief.template_id ?? selectedTemplateId,
           brief,
           trace_events: traceSteps,
           evidence_state: evidenceState,
@@ -980,7 +1079,7 @@ export default function HomePage() {
         setSaveBusy(false)
       }
     },
-    [brief, canSaveCurrent, evaluation, evidenceState, lastQuery, loadWorkspaceSessions, sessionId, traceSteps]
+    [brief, canSaveCurrent, evaluation, evidenceState, lastQuery, loadWorkspaceSessions, selectedTemplateId, sessionId, traceSteps]
   )
 
   const reopenSession = useCallback(async (savedId: string) => {
@@ -998,6 +1097,9 @@ export default function HomePage() {
       setFollowUpHint(saved.follow_up_context ?? null)
       setEvidenceState(saved.evidence_state ?? EMPTY_EVIDENCE_STATE)
       setEvaluation(saved.evaluation ?? null)
+      if (saved.brief.template_id) {
+        setSelectedTemplateId(saved.brief.template_id)
+      }
       setEvidenceHydrationKey((previous) => previous + 1)
       setActiveSavedSessionId(saved.id)
       setComparisonResult(null)
@@ -1247,7 +1349,7 @@ export default function HomePage() {
     let sessionFollowUp = false
 
     try {
-      await streamResearch(question, sessionId, (step) => {
+      await streamResearch(question, sessionId, selectedTemplateId, (step) => {
         setTraceSteps((prev) => [...prev, step])
         if (step.session_id) {
           resolvedSessionId = step.session_id
@@ -1258,6 +1360,9 @@ export default function HomePage() {
 
         if (step.type === 'complete' && step.brief) {
           setBrief(step.brief)
+          if (step.brief.template_id) {
+            setSelectedTemplateId(step.brief.template_id)
+          }
           setEvaluation(step.evaluation ?? null)
           setBriefState('complete')
           setQueryHistory((prev) => [...prev, question].slice(-6))
@@ -1281,7 +1386,7 @@ export default function HomePage() {
       for (const step of FALLBACK_EVENTS) {
         setTraceSteps((prev) => [...prev, step])
       }
-      const fallback = fallbackBrief(question, priorQuestion)
+      const fallback = fallbackBrief(question, priorQuestion, activeTemplate)
       setBrief(fallback)
       setEvaluation(null)
       setBriefState('complete')
@@ -1428,6 +1533,11 @@ export default function HomePage() {
         lastQuery={lastQuery}
         sessionId={sessionId}
         followUpHint={followUpHint}
+        templates={researchTemplates}
+        selectedTemplateId={selectedTemplateId}
+        templateState={templateState}
+        templateError={templateError}
+        onTemplateChange={setSelectedTemplateId}
       />
     </main>
   )

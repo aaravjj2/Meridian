@@ -2,17 +2,36 @@
 
 import { useEffect, useRef, useState } from 'react'
 
+import type { ResearchTemplateDefinition, ResearchTemplateId } from './types'
+
 type QueryInputProps = {
   disabled: boolean
   lastQuery: string
   sessionId: string | null
   followUpHint: string | null
+  templates: ResearchTemplateDefinition[]
+  selectedTemplateId: ResearchTemplateId
+  templateState: 'loading' | 'ready' | 'error'
+  templateError: string
+  onTemplateChange: (templateId: ResearchTemplateId) => void
   onSubmit: (query: string) => void
 }
 
-export default function QueryInput({ disabled, lastQuery, sessionId, followUpHint, onSubmit }: QueryInputProps) {
+export default function QueryInput({
+  disabled,
+  lastQuery,
+  sessionId,
+  followUpHint,
+  templates,
+  selectedTemplateId,
+  templateState,
+  templateError,
+  onTemplateChange,
+  onSubmit,
+}: QueryInputProps) {
   const [value, setValue] = useState('')
   const ref = useRef<HTMLInputElement>(null)
+  const activeTemplate = templates.find((item) => item.id === selectedTemplateId) ?? templates[0] ?? null
 
   useEffect(() => {
     if (!disabled) {
@@ -38,6 +57,29 @@ export default function QueryInput({ disabled, lastQuery, sessionId, followUpHin
       {followUpHint ? (
         <span className="query-followup-hint" data-testid="query-followup-hint">
           {followUpHint}
+        </span>
+      ) : null}
+      <select
+        className="query-template-select"
+        data-testid="query-template-select"
+        value={selectedTemplateId}
+        disabled={disabled || templateState === 'loading'}
+        onChange={(event) => onTemplateChange(event.target.value as ResearchTemplateId)}
+      >
+        {templates.map((template) => (
+          <option key={template.id} value={template.id}>
+            {template.title}
+          </option>
+        ))}
+      </select>
+      {activeTemplate ? (
+        <span className="query-template-hint" data-testid="query-template-hint" title={activeTemplate.framing}>
+          {activeTemplate.query_class_default.toUpperCase()}
+        </span>
+      ) : null}
+      {templateState === 'error' && templateError ? (
+        <span className="query-template-error" data-testid="query-template-error" title={templateError}>
+          Template fallback
         </span>
       ) : null}
       <input

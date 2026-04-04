@@ -5,6 +5,7 @@ export type TraceEvent = {
   session_id?: string
   followup?: boolean
   query_class?: ResearchBrief['query_class']
+  template_id?: ResearchTemplateId
   session_context_used?: boolean
   tool?: string
   args?: Record<string, unknown>
@@ -23,6 +24,22 @@ export type TraceEvent = {
     message?: string
     [key: string]: unknown
   }
+}
+
+export type ResearchTemplateId =
+  | 'macro_outlook'
+  | 'event_probability_interpretation'
+  | 'ticker_macro_framing'
+  | 'thesis_change_compare'
+
+export type ResearchTemplateDefinition = {
+  id: ResearchTemplateId
+  title: string
+  description: string
+  framing: string
+  query_class_default: NonNullable<ResearchBrief['query_class']>
+  emphasis: string[]
+  evaluation_expectations: string[]
 }
 
 export type SourcePreview = {
@@ -109,6 +126,8 @@ export type EvidenceNavigationState = {
 export type ResearchBrief = {
   question: string
   query_class?: 'macro_outlook' | 'event_probability' | 'ticker_macro'
+  template_id?: ResearchTemplateId
+  template_title?: string | null
   follow_up_context?: string | null
   thesis: string
   bull_case: BriefPoint[]
@@ -132,6 +151,8 @@ export type SavedResearchSessionSummary = {
   session_id: string
   label?: string | null
   query_class?: ResearchBrief['query_class']
+  template_id?: ResearchTemplateId | null
+  template_title?: string | null
   follow_up_context?: string | null
   archived?: boolean
   archived_at?: string | null
@@ -204,6 +225,8 @@ export type ResearchCollectionTimelineEntry = {
   label?: string | null
   question?: string | null
   query_class?: ResearchBrief['query_class']
+  template_id?: ResearchTemplateId | null
+  template_title?: string | null
   saved_at?: string | null
   evaluation_passed?: boolean | null
   snapshot_signature?: string | null

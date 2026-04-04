@@ -2,11 +2,15 @@ import { expect, test } from '@playwright/test'
 
 test('workspace persistence: manage, compare, integrity, export, and continue', async ({ page }) => {
   await page.goto('/')
+  await expect(page.getByTestId('query-template-select')).toBeVisible()
+
+  await page.getByTestId('query-template-select').selectOption('macro_outlook')
 
   await page.getByTestId('query-input').fill('What does the current yield curve shape imply for equities over the next 6 months?')
   await page.getByTestId('query-input').press('Enter')
 
   await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 30000 })
+  await expect(page.getByTestId('brief-template-title')).toContainText('Macro outlook')
   await page.getByTestId('claim-link-bull-1-inversion-easing').click()
   await expect(page.getByTestId('evidence-drilldown')).toBeVisible()
 
@@ -16,10 +20,12 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await expect(page.getByTestId('workspace-evaluation-0')).toBeVisible()
   await expect(page.getByTestId('workspace-snapshot-0')).toBeVisible()
 
+  await page.getByTestId('query-template-select').selectOption('thesis_change_compare')
   await page.getByTestId('query-input').fill('Continue from this session with an event-probability perspective.')
   await page.getByTestId('query-input').press('Enter')
 
   await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 30000 })
+  await expect(page.getByTestId('brief-template-title')).toContainText('Compare old vs new thesis')
   await page.getByTestId('save-session-button').click()
   await expect(page.getByTestId('workspace-item-1')).toBeVisible({ timeout: 15000 })
 

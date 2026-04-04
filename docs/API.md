@@ -52,13 +52,37 @@ Response:
 
 Starts a research run and streams trace events using Server-Sent Events.
 
+### GET /api/v1/research/templates
+
+Returns the deterministic Wave 15 research template catalog used by query flow and persistence.
+
+Response:
+
+```json
+{
+  "templates": [
+    {
+      "id": "macro_outlook",
+      "title": "Macro outlook",
+      "description": "Build a balanced macro baseline with explicit bull, bear, and risk structure.",
+      "framing": "Start from cycle position, inflation trend, and policy stance before sizing risk.",
+      "query_class_default": "macro_outlook",
+      "emphasis": ["Cycle and regime interpretation"],
+      "evaluation_expectations": ["At least one macro signal conflict is surfaced"]
+    }
+  ],
+  "count": 4
+}
+```
+
 Request body:
 
 ```json
 {
   "question": "What does the current yield curve shape imply for equities over the next 6 months?",
   "mode": "demo",
-  "session_id": "sess-optional-thread-id"
+  "session_id": "sess-optional-thread-id",
+  "template_id": "macro_outlook"
 }
 ```
 
@@ -67,6 +91,7 @@ Request constraints:
 - question: required, minimum length 3
 - mode: optional, defaults to demo
 - session_id: optional, 4..64 chars; reused to enable in-session follow-up continuity
+- template_id: optional, defaults to `macro_outlook`
 
 Response content type:
 
@@ -101,6 +126,8 @@ Type-specific fields:
 Brief payload additions in complete events:
 
 - query_class: macro_outlook | event_probability | ticker_macro
+- template_id: macro_outlook | event_probability_interpretation | ticker_macro_framing | thesis_change_compare
+- template_title: human-readable template title
 - follow_up_context: optional string summarizing prior-question linkage
 - methodology_summary: optional string explaining evidence synthesis process
 - bull_case[].claim_id, bear_case[].claim_id, key_risks[].claim_id: stable claim identifiers
@@ -146,6 +173,8 @@ Response:
       "session_id": "sess-abcd1234",
       "label": "Baseline curve view",
       "query_class": "macro_outlook",
+      "template_id": "macro_outlook",
+      "template_title": "Macro outlook",
       "follow_up_context": "Follow-up to prior question: ...",
       "archived": false,
       "archived_at": null,
@@ -176,6 +205,7 @@ Request body includes:
 - mode (demo | live)
 - session_id (runtime thread id)
 - label (optional operator label)
+- template_id (optional selected template id)
 - brief (full ResearchBrief payload)
 - trace_events (SSE-compatible trace payload)
 - evidence_state (active_claim_id, expanded_source_id)
@@ -425,6 +455,8 @@ Response shape:
       "label": "Baseline",
       "question": "...",
       "query_class": "macro_outlook",
+      "template_id": "macro_outlook",
+      "template_title": "Macro outlook",
       "saved_at": "...",
       "evaluation_passed": true,
       "snapshot_signature": "<sha256>",

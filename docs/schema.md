@@ -13,9 +13,21 @@
 - `last_updated: str (ISO)`
 - `history: list[DataPoint]`
 
+## ResearchTemplateDefinition
+
+- `id: "macro_outlook" | "event_probability_interpretation" | "ticker_macro_framing" | "thesis_change_compare"`
+- `title: str`
+- `description: str`
+- `framing: str`
+- `query_class_default: "macro_outlook" | "event_probability" | "ticker_macro"`
+- `emphasis: list[str]`
+- `evaluation_expectations: list[str]`
+
 ## ResearchBrief
 
 - `question: str`
+- `template_id: "macro_outlook" | "event_probability_interpretation" | "ticker_macro_framing" | "thesis_change_compare" | null`
+- `template_title: str | null`
 - `thesis: str`
 - `bull_case: list[{ claim_id, point, source_ref }]` (3-5)
 - `bear_case: list[{ claim_id, point, source_ref }]` (2-5)
@@ -105,6 +117,8 @@ Wave 10 freshness policy check includes:
 - `session_id: str` (runtime research-thread id used for follow-ups)
 - `label: str | null` (operator-managed display label)
 - `query_class: "macro_outlook" | "event_probability" | "ticker_macro" | null`
+- `template_id: "macro_outlook" | "event_probability_interpretation" | "ticker_macro_framing" | "thesis_change_compare" | null`
+- `template_title: str | null`
 - `follow_up_context: str | null`
 - `brief: ResearchBrief`
 - `trace_events: list[SavedTraceEvent]`
@@ -331,6 +345,8 @@ Required `files` entries:
 - `label: str | null`
 - `question: str | null`
 - `query_class: "macro_outlook" | "event_probability" | "ticker_macro" | null`
+- `template_id: "macro_outlook" | "event_probability_interpretation" | "ticker_macro_framing" | "thesis_change_compare" | null`
+- `template_title: str | null`
 - `saved_at: str | null`
 - `evaluation_passed: bool | null`
 - `snapshot_signature: str | null`

@@ -47,6 +47,7 @@ def _save_payload(question: str, session_id: str, events: list[dict], brief: dic
         "mode": "demo",
         "session_id": session_id,
         "label": f"label-{session_id}",
+        "template_id": brief.get("template_id"),
         "brief": brief,
         "trace_events": events,
         "evidence_state": {
@@ -73,6 +74,8 @@ def test_workspace_save_list_get_and_export_roundtrip() -> None:
     assert saved["mode"] == "demo"
     assert saved["session_id"] == thread_id
     assert saved["canonical_signature"]
+    assert saved["template_id"] == "macro_outlook"
+    assert saved["template_title"] == "Macro outlook"
     assert saved["brief"]["provenance_summary"]["source_count"] >= 3
     assert saved["brief"]["snapshot_summary"]["snapshot_count"] >= 3
     assert saved["evaluation"]["version"] == "phase-7"
@@ -87,6 +90,7 @@ def test_workspace_save_list_get_and_export_roundtrip() -> None:
     listing = listed.json()
     assert listing["count"] == 1
     assert listing["sessions"][0]["id"] == saved["id"]
+    assert listing["sessions"][0]["template_id"] == "macro_outlook"
     assert listing["sessions"][0]["evaluation_passed"] is True
     assert isinstance(listing["sessions"][0]["snapshot_kind_counts"], dict)
     assert listing["sessions"][0]["snapshot_signature"]
@@ -283,10 +287,12 @@ def test_workspace_thread_timeline_returns_ordered_thesis_evolution() -> None:
     assert first_entry["thesis_state"]["claim_count"] >= 1
     assert first_entry["thesis_delta"]["previous_session_id"] is None
     assert first_entry["thesis_delta"]["delta_signature"]
+    assert first_entry["template_id"] == "macro_outlook"
 
     assert second_entry["thesis_state"]["thesis"]
     assert second_entry["thesis_delta"]["previous_session_id"] == first_saved["id"]
     assert second_entry["thesis_delta"]["delta_signature"]
+    assert second_entry["template_id"] == "event_probability_interpretation"
     assert isinstance(second_entry["thesis_delta"]["thesis_changed"], bool)
     assert isinstance(second_entry["thesis_delta"]["confidence_changed"], bool)
     assert isinstance(second_entry["thesis_delta"]["claims_changed"], bool)

@@ -56,6 +56,7 @@ def _save_session(question: str, session_id: str) -> dict:
             "question": question,
             "mode": "demo",
             "session_id": session_id,
+            "template_id": complete["brief"].get("template_id"),
             "brief": complete["brief"],
             "trace_events": events,
             "evidence_state": {
@@ -180,6 +181,7 @@ def test_collection_add_remove_reorder_and_ordered_timeline() -> None:
     assert detail["timeline"][0]["exists"] is True
     assert detail["timeline"][0]["question"]
     assert detail["timeline"][0]["query_class"] in {"macro_outlook", "event_probability", "ticker_macro"}
+    assert detail["timeline"][0]["template_id"] == "event_probability_interpretation"
     assert detail["timeline"][0]["thesis_state"]["thesis"]
     assert detail["timeline"][0]["thesis_state"]["confidence"] >= 1
     assert detail["timeline"][0]["thesis_delta"]["previous_session_id"] is None
@@ -317,6 +319,7 @@ def test_collection_bundle_export_v2_sections_and_manifest() -> None:
     assert payload["files"]["timeline.json"]["timeline_signature"]
     assert len(payload["files"]["sessions.json"]) == 2
     assert payload["files"]["sessions.json"][0]["canonical_signature"]
+    assert payload["files"]["sessions.json"][0]["template_id"] == "macro_outlook"
     assert payload["files"]["compare.json"]["pair_count"] >= 1
     assert payload["manifest"]["section_signatures"]["report.md"]
 

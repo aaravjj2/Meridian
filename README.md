@@ -162,6 +162,7 @@ curl -s https://meridian-api.railway.app/api/v1/health
 |----------|--------|-------------|
 | `/api/v1/health` | GET | Service status and metadata |
 | `/api/v1/metadata` | GET | Version, model info, data sources |
+| `/api/v1/research/templates` | GET | Wave 15 deterministic research template catalog |
 | `/api/v1/research` | POST | **SSE stream** of research trace + brief |
 | `/api/v1/screener` | GET | Ranked market dislocations |
 | `/api/v1/regime` | GET | 5-dimension macro regime snapshot |
@@ -232,6 +233,13 @@ Meridian demonstrates GLM-5.1's capabilities across real-world scenarios:
 ## Workspace Sessions and Collections (Phase 12)
 
 Meridian supports a single-user research workspace directly in the terminal flow with deterministic local persistence and audit tooling:
+
+- Choose from deterministic research templates in query flow:
+    - Macro outlook
+    - Event probability interpretation
+    - Ticker + macro framing
+    - Compare old vs new thesis
+- Persist template metadata across briefs, saved sessions, timeline views, and bundle exports
 
 - Save completed research sessions (brief + trace + evidence navigation state)
 - Search and filter saved sessions by text, query class, and archive visibility

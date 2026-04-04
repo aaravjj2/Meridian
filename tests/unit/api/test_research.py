@@ -12,7 +12,11 @@ from meridian.normalisation.schemas import ResearchBrief
 client = TestClient(app)
 
 
-def _collect_events(question: str, session_id: str | None = None) -> list[dict]:
+def _collect_events(
+    question: str,
+    session_id: str | None = None,
+    template_id: str | None = None,
+) -> list[dict]:
     events: list[dict] = []
     payload = {
         "question": question,
@@ -20,6 +24,8 @@ def _collect_events(question: str, session_id: str | None = None) -> list[dict]:
     }
     if session_id:
         payload["session_id"] = session_id
+    if template_id:
+        payload["template_id"] = template_id
 
     with client.stream("POST", "/api/v1/research", json=payload) as response:
         assert response.status_code == 200
@@ -32,6 +38,21 @@ def _collect_events(question: str, session_id: str | None = None) -> list[dict]:
             events.append(event)
 
     return events
+
+
+def test_research_templates_endpoint_returns_wave15_catalog() -> None:
+    response = client.get("/api/v1/research/templates")
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["count"] == 4
+    template_ids = [item["id"] for item in payload["templates"]]
+    assert template_ids == [
+        "macro_outlook",
+        "event_probability_interpretation",
+        "ticker_macro_framing",
+        "thesis_change_compare",
+    ]
 
 
 def _brief_signature(brief_payload: dict) -> str:
@@ -69,6 +90,8 @@ def test_research_sse_stream_emits_complete() -> None:
     brief = ResearchBrief.model_validate(complete["brief"])
     assert brief.thesis
     assert brief.query_class == "macro_outlook"
+    assert brief.template_id == "macro_outlook"
+    assert complete["template_id"] == "macro_outlook"
     assert len(brief.sources) >= 3
     assert brief.provenance_summary is not None
     assert brief.snapshot_summary is not None
@@ -158,10 +181,12 @@ def test_research_demo_output_is_deterministic_for_same_question() -> None:
     events_a = _collect_events(
         question="Frame AAPL versus macro conditions for a cautious equity book.",
         session_id="phase2-determinism-a",
+        template_id="ticker_macro_framing",
     )
     events_b = _collect_events(
         question="Frame AAPL versus macro conditions for a cautious equity book.",
         session_id="phase2-determinism-b",
+        template_id="ticker_macro_framing",
     )
 
     brief_a = events_a[-1]["brief"]
@@ -172,3 +197,20 @@ def test_research_demo_output_is_deterministic_for_same_question() -> None:
     assert _brief_signature(brief_a) == _brief_signature(brief_b)
     assert eval_a["deterministic_signature"] == eval_b["deterministic_signature"]
     assert brief_a.get("snapshot_summary") == brief_b.get("snapshot_summary")
+    assert brief_a.get("template_id") == "ticker_macro_framing"
+    assert brief_b.get("template_id") == "ticker_macro_framing"
+
+
+def test_research_template_selection_changes_brief_shape() -> None:
+    events = _collect_events(
+        question="Compare my old thesis with the latest macro evidence.",
+        session_id="phase15-template-thesis-delta",
+        template_id="thesis_change_compare",
+    )
+    complete = events[-1]
+    brief = ResearchBrief.model_validate(complete["brief"])
+
+    assert brief.template_id == "thesis_change_compare"
+    assert brief.template_title == "Compare old vs new thesis"
+    assert brief.query_class == "macro_outlook"
+    assert "prior thesis" in (brief.follow_up_context or "").lower() or brief.follow_up_context is None

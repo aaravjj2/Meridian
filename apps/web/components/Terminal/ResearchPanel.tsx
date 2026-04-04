@@ -326,6 +326,9 @@ export default function ResearchPanel({
       <section className="brief-meta" data-testid="brief-meta">
         <span className="block-label">QUERY CLASS</span>
         <p data-testid="brief-query-class">{queryClassLabel(brief.query_class)}</p>
+        {brief.template_title ? (
+          <p data-testid="brief-template-title">Template: {brief.template_title}</p>
+        ) : null}
         <p className="brief-question" data-testid="brief-question">
           {brief.question}
         </p>

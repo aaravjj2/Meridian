@@ -12,6 +12,7 @@ from typing import Any, AsyncGenerator
 import httpx
 
 from meridian.agent.prompt import build_system_prompt
+from meridian.agent.templates import resolve_research_template, template_prompt_hint
 from meridian.agent.tools import ToolExecutor
 from meridian.normalisation.schemas import ResearchBrief, TraceStep
 from meridian.settings import FIXTURES_DIR, is_demo_mode
@@ -93,8 +94,18 @@ class ResearchAgent:
         response.raise_for_status()
         return response
 
-    async def run(self, question: str, mode: str | None = None) -> AsyncGenerator[TraceStep, None]:
-        async for step in self.run_with_context(question=question, mode=mode, session_context=None):
+    async def run(
+        self,
+        question: str,
+        mode: str | None = None,
+        template_id: str | None = None,
+    ) -> AsyncGenerator[TraceStep, None]:
+        async for step in self.run_with_context(
+            question=question,
+            mode=mode,
+            session_context=None,
+            template_id=template_id,
+        ):
             yield step
 
     async def run_with_context(
@@ -102,15 +113,30 @@ class ResearchAgent:
         question: str,
         mode: str | None = None,
         session_context: dict[str, Any] | None = None,
+        template_id: str | None = None,
     ) -> AsyncGenerator[TraceStep, None]:
         resolved_mode = (mode or ("demo" if self.demo_mode else "live")).strip().lower()
         if resolved_mode == "demo":
-            async for step in self._run_demo(question, session_context=session_context):
+            async for step in self._run_demo(
+                question,
+                session_context=session_context,
+                template_id=template_id,
+            ):
                 yield step
             return
 
-        async for step in self._run_live(question, session_context=session_context):
+        async for step in self._run_live(
+            question,
+            session_context=session_context,
+            template_id=template_id,
+        ):
             yield step
+
+    def _query_class_for_template(self, question: str, template_id: str | None) -> str:
+        if template_id:
+            template = resolve_research_template(template_id)
+            return template.query_class_default
+        return self._classify_query(question)
 
     def _classify_query(self, question: str) -> str:
         lowered = question.lower()
@@ -154,9 +180,12 @@ class ResearchAgent:
             return None
         prior_question = str(session_context.get("last_question", "")).strip()
         prior_thesis = str(session_context.get("last_thesis", "")).strip()
+        prior_template = str(session_context.get("last_template_title", "")).strip()
         if not prior_question:
             return None
         note = f"Follow-up to prior question: {prior_question}"
+        if prior_template:
+            note += f" | Prior template: {prior_template}"
         if prior_thesis:
             note += f" | Prior thesis: {prior_thesis}"
         return note
@@ -255,14 +284,139 @@ class ResearchAgent:
         self,
         question: str,
         query_class: str,
+        template_id: str,
+        template_title: str,
         follow_up_note: str | None,
         trace_steps: list[int],
         created_at: str,
     ) -> dict[str, Any]:
+        if template_id == "thesis_change_compare":
+            return {
+                "question": question,
+                "query_class": "macro_outlook",
+                "template_id": template_id,
+                "template_title": template_title,
+                "follow_up_context": follow_up_note,
+                "thesis": "Relative to the prior thesis, disinflation evidence remains constructive while credit and event-pricing signals keep downside tails active; update size is moderate, not regime-breaking.",
+                "bull_case": [
+                    {
+                        "claim_id": "bull-1-prior-thesis-disinflation-still-valid",
+                        "point": "Inflation trend continues to support the prior disinflation baseline rather than invalidating it.",
+                        "source_ref": "fred_fetch:CPIAUCSL",
+                    },
+                    {
+                        "claim_id": "bull-2-prior-thesis-growth-resilient",
+                        "point": "Real activity remains positive, so the prior soft-landing component still has support.",
+                        "source_ref": "fred_fetch:GDPC1",
+                    },
+                    {
+                        "claim_id": "bull-3-prior-thesis-easing-pricing-intact",
+                        "point": "Event pricing still leans toward easing, preserving the original rates-sensitive risk support.",
+                        "source_ref": "prediction_market_fetch:KXFEDCUT-H1-2026",
+                    },
+                ],
+                "bear_case": [
+                    {
+                        "claim_id": "bear-1-delta-credit-risk-worse",
+                        "point": "Credit spread context remains too elevated to fully trust the prior constructive thesis.",
+                        "source_ref": "fred_fetch:BAMLH0A0HYM2",
+                    },
+                    {
+                        "claim_id": "bear-2-delta-curve-warning-persists",
+                        "point": "Curve dynamics improved only partially, so lagged downside risk remains in the updated view.",
+                        "source_ref": "fred_fetch:T10Y2Y",
+                    },
+                ],
+                "key_risks": [
+                    {
+                        "claim_id": "risk-1-thesis-change-overfit",
+                        "risk": "The thesis update may overreact to short-window market repricing instead of structural macro drift.",
+                        "source_ref": "prediction_market_fetch:KXFEDCUT-H1-2026",
+                    },
+                    {
+                        "claim_id": "risk-2-thesis-change-policy-shock",
+                        "risk": "Policy communication shocks can force a larger thesis rewrite than currently modeled.",
+                        "source_ref": "news_fetch:fed-rate-decision",
+                    },
+                ],
+                "confidence": 3,
+                "confidence_rationale": "The update is evidence-backed but still sensitive to policy and credit repricing tails.",
+                "methodology_summary": "Compared prior-thesis anchors against current inflation, growth, credit, and event-pricing evidence to classify what changed versus what persisted.",
+                "sources": [
+                    {
+                        "type": "fred",
+                        "id": "CPIAUCSL",
+                        "excerpt": "Inflation trend still supports the prior disinflation anchor.",
+                        "claim_refs": ["bull-1-prior-thesis-disinflation-still-valid"],
+                        "preview": self._fred_preview("CPIAUCSL"),
+                    },
+                    {
+                        "type": "fred",
+                        "id": "GDPC1",
+                        "excerpt": "Real growth remains positive but slower than expansionary highs.",
+                        "claim_refs": ["bull-2-prior-thesis-growth-resilient"],
+                        "preview": self._fred_preview("GDPC1"),
+                    },
+                    {
+                        "type": "market",
+                        "id": "KXFEDCUT-H1-2026",
+                        "excerpt": "Event-pricing still leans easing, but repricing sensitivity remains high.",
+                        "claim_refs": [
+                            "bull-3-prior-thesis-easing-pricing-intact",
+                            "risk-1-thesis-change-overfit",
+                        ],
+                        "preview": self._market_preview("KXFEDCUT-H1-2026"),
+                    },
+                    {
+                        "type": "fred",
+                        "id": "BAMLH0A0HYM2",
+                        "excerpt": "Credit spread levels keep downside tail-risk alive in the revised thesis.",
+                        "claim_refs": ["bear-1-delta-credit-risk-worse"],
+                        "preview": self._fred_preview("BAMLH0A0HYM2"),
+                    },
+                    {
+                        "type": "fred",
+                        "id": "T10Y2Y",
+                        "excerpt": "Curve inversion has improved but remains cautionary for lagged outcomes.",
+                        "claim_refs": ["bear-2-delta-curve-warning-persists"],
+                        "preview": self._fred_preview("T10Y2Y"),
+                    },
+                    {
+                        "type": "news",
+                        "id": "fed-rate-decision",
+                        "excerpt": "Policy communication remains a key source of thesis-change risk.",
+                        "claim_refs": ["risk-2-thesis-change-policy-shock"],
+                        "preview": self._news_preview("fed-rate-decision"),
+                    },
+                ],
+                "signal_conflicts": [
+                    {
+                        "conflict_id": "conflict-thesis-stability-vs-delta",
+                        "title": "Prior Thesis Stability Versus New Delta Signals",
+                        "summary": "Core disinflation/growth anchors remain intact while credit and policy signals justify a cautious directional update.",
+                        "severity": "high",
+                        "claim_refs": [
+                            "bull-1-prior-thesis-disinflation-still-valid",
+                            "bear-1-delta-credit-risk-worse",
+                            "risk-2-thesis-change-policy-shock",
+                        ],
+                        "source_refs": [
+                            "fred:CPIAUCSL",
+                            "fred:BAMLH0A0HYM2",
+                            "news:fed-rate-decision",
+                        ],
+                    }
+                ],
+                "created_at": created_at,
+                "trace_steps": trace_steps,
+            }
+
         if query_class == "event_probability":
             return {
                 "question": question,
                 "query_class": query_class,
+                "template_id": template_id,
+                "template_title": template_title,
                 "follow_up_context": follow_up_note,
                 "thesis": "Event probabilities are pricing a relatively fast easing path, but macro cross-checks suggest the market is slightly ahead of the underlying policy reaction function.",
                 "bull_case": [
@@ -372,6 +526,8 @@ class ResearchAgent:
             return {
                 "question": question,
                 "query_class": query_class,
+                "template_id": template_id,
+                "template_title": template_title,
                 "follow_up_context": follow_up_note,
                 "thesis": "Ticker-and-macro framing points to a quality bias: company fundamentals can hold if growth decelerates gradually, but spread and recession signals argue for tighter risk control.",
                 "bull_case": [
@@ -495,6 +651,8 @@ class ResearchAgent:
         return {
             "question": question,
             "query_class": "macro_outlook",
+            "template_id": template_id,
+            "template_title": template_title,
             "follow_up_context": follow_up_note,
             "thesis": "Macro conditions indicate a late-cycle regime: growth is still positive, disinflation is progressing, and credit remains watchful rather than crisis-like.",
             "bull_case": [
@@ -604,8 +762,19 @@ class ResearchAgent:
             "trace_steps": trace_steps,
         }
 
-    def _demo_reasoning_texts(self, query_class: str, follow_up_note: str | None) -> list[str]:
+    def _demo_reasoning_texts(
+        self,
+        query_class: str,
+        follow_up_note: str | None,
+        template_id: str | None = None,
+    ) -> list[str]:
         follow_up_text = follow_up_note or "No prior context in this session; using baseline macro evidence path."
+        if template_id == "thesis_change_compare":
+            return [
+                "Template selected: compare old vs new thesis. Anchoring on prior view and extracting concrete deltas from refreshed evidence.",
+                "Evaluating which claims persisted versus changed across inflation, growth, credit, and policy-pricing inputs.",
+                f"Producing an explicit thesis-delta narrative with confidence impact and risk carry-over. {follow_up_text}",
+            ]
         if query_class == "event_probability":
             return [
                 "Classified query as event-probability interpretation. Prioritizing market-implied odds, policy-rate context, and inflation trend confirmation.",
@@ -645,6 +814,7 @@ class ResearchAgent:
         self,
         question: str,
         session_context: dict[str, Any] | None = None,
+        template_id: str | None = None,
     ) -> AsyncGenerator[TraceStep, None]:
         """
         Run the research agent in demo mode using a pre-recorded trace file.
@@ -720,7 +890,8 @@ class ResearchAgent:
             )
             return
 
-        query_class = self._classify_query(question)
+        selected_template = resolve_research_template(template_id)
+        query_class = self._query_class_for_template(question, selected_template.id)
         follow_up_note = self._session_follow_up_note(session_context)
         complete_index = 0
         for idx, raw in enumerate(payload):
@@ -732,11 +903,17 @@ class ResearchAgent:
         demo_brief = self._build_demo_brief(
             question=question,
             query_class=query_class,
+            template_id=selected_template.id,
+            template_title=selected_template.title,
             follow_up_note=follow_up_note,
             trace_steps=trace_steps,
             created_at=created_at,
         )
-        reasoning_texts = self._demo_reasoning_texts(query_class=query_class, follow_up_note=follow_up_note)
+        reasoning_texts = self._demo_reasoning_texts(
+            query_class=query_class,
+            follow_up_note=follow_up_note,
+            template_id=selected_template.id,
+        )
         reasoning_idx = 0
 
         # Replay trace with timing
@@ -773,6 +950,7 @@ class ResearchAgent:
                         "brief": demo_brief,
                         "duration_ms": event.get("duration_ms", 0),
                         "query_class": query_class,
+                        "template_id": selected_template.id,
                         "session_context_used": follow_up_note is not None,
                     }
                 elif event_type == "error":
@@ -796,12 +974,18 @@ class ResearchAgent:
         self,
         question: str,
         session_context: dict[str, Any] | None = None,
+        template_id: str | None = None,
     ) -> AsyncGenerator[TraceStep, None]:
         start = time.perf_counter()
+        selected_template = resolve_research_template(template_id)
         messages: list[dict[str, Any]] = [
             {
                 "role": "system",
                 "content": build_system_prompt(self.tools.definitions),
+            },
+            {
+                "role": "system",
+                "content": template_prompt_hint(selected_template),
             },
         ]
 
@@ -926,7 +1110,12 @@ class ResearchAgent:
             candidate.setdefault("question", question)
             candidate.setdefault("created_at", _iso_now())
             candidate.setdefault("trace_steps", list(range(step_index + 1)))
-            candidate.setdefault("query_class", self._classify_query(question))
+            candidate.setdefault(
+                "query_class",
+                self._query_class_for_template(question, selected_template.id),
+            )
+            candidate.setdefault("template_id", selected_template.id)
+            candidate.setdefault("template_title", selected_template.title)
             candidate.setdefault("methodology_summary", "Tool-driven synthesis with evidence cross-checking.")
             if follow_up_note:
                 candidate.setdefault("follow_up_context", follow_up_note)
@@ -949,7 +1138,9 @@ class ResearchAgent:
                 content={
                     "brief": brief.model_dump(),
                     "duration_ms": duration_ms,
-                    "query_class": brief.query_class or self._classify_query(question),
+                    "query_class": brief.query_class
+                    or self._query_class_for_template(question, selected_template.id),
+                    "template_id": selected_template.id,
                     "session_context_used": follow_up_note is not None,
                 },
                 timestamp=_iso_now(),

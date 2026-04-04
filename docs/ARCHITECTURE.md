@@ -171,6 +171,11 @@ class ResearchAgent:
 - Citation enforcement
 - JSON schema validation
 
+#### Research Templates (`templates.py`)
+- Deterministic Wave 15 catalog (4 templates)
+- Template-specific framing and evaluation expectations
+- Stable template ids propagated from query input through brief/session/timeline/export
+
 ### 4. Data Ingestion
 
 **Location**: `src/meridian/ingestion/`
@@ -208,24 +213,26 @@ class ResearchAgent:
 ```
 1. User submits question via Terminal Panel
        ↓
-2. POST /api/v1/research with question
+2. Frontend loads `GET /api/v1/research/templates` and selects template
        ↓
-3. ResearchAgent.run(question) starts
+3. POST /api/v1/research with question + template_id
        ↓
-4. System prompt built with tool definitions
+4. ResearchAgent.run(question) starts with template framing
        ↓
-5. GLM-5.1 called with initial message
+5. System prompt built with tool definitions + template hint
        ↓
-6. [LOOP] While tool_calls < max_tool_calls:
+6. GLM-5.1 called with initial message
+       ↓
+7. [LOOP] While tool_calls < max_tool_calls:
    a. Receive GLM-5.1 response
    b. If tool_call: Execute tool, emit trace, append to messages
    c. If reasoning: Emit trace as reasoning
    d. Every N steps: Self-reflection checkpoint
    e. If JSON brief found: Validate and emit complete
        ↓
-7. Final ResearchBrief returned to frontend
+8. Final ResearchBrief returned to frontend with template metadata
        ↓
-8. Brief rendered in ResearchPanel
+9. Brief rendered in ResearchPanel + persisted in workspace/timeline/export flows
 ```
 
 ### WebSocket Flow
@@ -295,6 +302,8 @@ timestamp: str
 ### ResearchBrief
 ```python
 question: str
+template_id?: Literal["macro_outlook", "event_probability_interpretation", "ticker_macro_framing", "thesis_change_compare"]
+template_title?: str
 thesis: str
 bull_case: BriefPoint[]  # 3-5 items
 bear_case: BriefPoint[]  # 2-5 items
@@ -320,6 +329,8 @@ mode: Literal["demo", "live"]
 session_id: str
 label: str | None
 query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None
+template_id: Literal["macro_outlook", "event_probability_interpretation", "ticker_macro_framing", "thesis_change_compare"] | None
+template_title: str | None
 follow_up_context: str | None
 brief: ResearchBrief
 trace_events: SavedTraceEvent[]
@@ -364,6 +375,10 @@ Wave 13 extends workspace evolution observability with deterministic thesis time
 both collection timelines and runtime thread histories. Each timeline entry now carries a compact
 thesis snapshot and a deterministic delta vs the previous save across thesis/confidence/claims/
 freshness-policy/conflicts/evaluation, plus a timeline-level signature for audit replay.
+
+Wave 15 adds deterministic research templates with typed catalog metadata and end-to-end persistence.
+Template selection now flows through API requests, brief payloads, saved sessions, thread/collection timelines,
+and bundle exports for repeatable research framing and auditability.
 
 ---
 

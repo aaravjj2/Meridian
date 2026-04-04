@@ -96,6 +96,16 @@ function compactText(value: string, limit = 140): string {
   return `${normalized.slice(0, limit - 1)}...`
 }
 
+function templateLabel(templateTitle: string | null | undefined, templateId: string | null | undefined): string {
+  if (templateTitle && templateTitle.trim()) {
+    return templateTitle
+  }
+  if (templateId && templateId.trim()) {
+    return templateId.replace(/_/g, ' ')
+  }
+  return 'default template'
+}
+
 function thesisDeltaLabel(delta: ResearchThesisDelta | null | undefined): string {
   if (!delta) {
     return 'Delta unavailable.'
@@ -489,7 +499,8 @@ export default function WorkspacePanel({
                         <span>{savedAtLabel(item.saved_at || '')}</span>
                       </header>
                       <p className="workspace-item-meta">
-                        {queryClassLabel(item.query_class)} | {item.evaluation_passed ? 'Eval PASS' : 'Eval n/a'}
+                        {queryClassLabel(item.query_class)} | {templateLabel(item.template_title, item.template_id)} |{' '}
+                        {item.evaluation_passed ? 'Eval PASS' : 'Eval n/a'}
                       </p>
                       {thesisState ? (
                         <p className="workspace-item-meta" data-testid={`workspace-collection-thesis-${idx}`}>
@@ -609,7 +620,8 @@ export default function WorkspacePanel({
                         <span>{savedAtLabel(item.saved_at || '')}</span>
                       </header>
                       <p className="workspace-item-meta">
-                        {queryClassLabel(item.query_class)} | {item.evaluation_passed ? 'Eval PASS' : 'Eval n/a'}
+                        {queryClassLabel(item.query_class)} | {templateLabel(item.template_title, item.template_id)} |{' '}
+                        {item.evaluation_passed ? 'Eval PASS' : 'Eval n/a'}
                       </p>
                       {thesisState ? (
                         <p className="workspace-item-meta" data-testid={`workspace-thread-thesis-${idx}`}>
@@ -901,7 +913,9 @@ export default function WorkspacePanel({
                 </header>
                 {session.label ? <p className="workspace-item-label">{session.label}</p> : null}
                 <p className="workspace-item-question">{session.question}</p>
-                <p className="workspace-item-meta">Thread {session.session_id}</p>
+                <p className="workspace-item-meta">
+                  Thread {session.session_id} | {templateLabel(session.template_title, session.template_id)}
+                </p>
                 {session.evaluation_passed !== undefined && session.evaluation_passed !== null ? (
                   <p
                     className={

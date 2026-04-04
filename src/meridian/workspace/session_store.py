@@ -11,11 +11,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from meridian.agent.templates import resolve_research_template
 from meridian.normalisation.schemas import (
     ResearchBrief,
     ResearchCollectionTimelineEntry,
     ResearchEvaluationCheck,
     ResearchEvaluationReport,
+    ResearchTemplateId,
     ResearchThesisDelta,
     ResearchThesisStateSnapshot,
     ResearchThreadTimelineDetail,
@@ -142,6 +144,7 @@ class SaveResearchSessionRequest(BaseModel):
     mode: Literal["demo", "live"] = "demo"
     session_id: str = Field(min_length=4, max_length=64)
     label: str | None = Field(default=None, max_length=120)
+    template_id: ResearchTemplateId | None = None
     brief: ResearchBrief
     trace_events: list[SavedTraceEvent] = Field(default_factory=list)
     evidence_state: EvidenceNavigationState | None = None
@@ -163,6 +166,8 @@ class SavedResearchSession(BaseModel):
     session_id: str
     label: str | None = None
     query_class: QueryClass | None = None
+    template_id: ResearchTemplateId | None = None
+    template_title: str | None = None
     follow_up_context: str | None = None
     brief: ResearchBrief
     trace_events: list[SavedTraceEvent] = Field(default_factory=list)
@@ -191,6 +196,8 @@ class SavedResearchSessionSummary(BaseModel):
     session_id: str
     label: str | None = None
     query_class: QueryClass | None = None
+    template_id: ResearchTemplateId | None = None
+    template_title: str | None = None
     follow_up_context: str | None = None
     archived: bool = False
     archived_at: str | None = None
@@ -983,6 +990,11 @@ class ResearchSessionStore:
 
     def _build_record(self, saved_id: str, payload: SaveResearchSessionRequest, timestamp: str) -> SavedResearchSession:
         enriched_brief = self._enrich_brief_provenance(payload.brief, mode=payload.mode)
+        if payload.template_id and not enriched_brief.template_id:
+            selected_template = resolve_research_template(payload.template_id)
+            enriched_brief.template_id = payload.template_id
+            if not enriched_brief.template_title:
+                enriched_brief.template_title = selected_template.title
         evaluation = self._build_evaluation(
             brief=enriched_brief,
             trace_events=payload.trace_events,
@@ -1006,6 +1018,8 @@ class ResearchSessionStore:
             session_id=payload.session_id,
             label=payload.label,
             query_class=enriched_brief.query_class,
+            template_id=enriched_brief.template_id,
+            template_title=enriched_brief.template_title,
             follow_up_context=enriched_brief.follow_up_context,
             brief=enriched_brief,
             trace_events=payload.trace_events,
@@ -1056,6 +1070,8 @@ class ResearchSessionStore:
             session_id=record.session_id,
             label=record.label,
             query_class=record.query_class,
+            template_id=record.template_id,
+            template_title=record.template_title,
             follow_up_context=record.follow_up_context,
             archived=record.archived,
             archived_at=record.archived_at,
@@ -1273,6 +1289,8 @@ class ResearchSessionStore:
                 label=record.label,
                 question=record.question,
                 query_class=record.query_class,
+                template_id=record.template_id,
+                template_title=record.template_title,
                 saved_at=record.saved_at,
                 evaluation_passed=record.evaluation.passed if record.evaluation else None,
                 snapshot_signature=self._snapshot_signature(record.brief),
@@ -1597,6 +1615,8 @@ class ResearchSessionStore:
             ("question", left.question, right.question),
             ("label", left.label, right.label),
             ("query_class", left.query_class, right.query_class),
+            ("template_id", left.template_id, right.template_id),
+            ("template_title", left.template_title, right.template_title),
             ("follow_up_context", left.follow_up_context, right.follow_up_context),
             ("mode", left.mode, right.mode),
             ("archived", left.archived, right.archived),
@@ -2082,6 +2102,8 @@ class ResearchSessionStore:
                 "saved_id": record.id,
                 "thread_session_id": record.session_id,
                 "query_class": record.query_class,
+                "template_id": record.template_id,
+                "template_title": record.template_title,
                 "follow_up_context": record.follow_up_context,
             },
             "captured_at": provenance_summary.get("captured_at"),
@@ -2173,6 +2195,8 @@ class ResearchSessionStore:
             "saved_id": record.id,
             "thread_session_id": record.session_id,
             "query_class": record.query_class,
+            "template_id": record.template_id,
+            "template_title": record.template_title,
             "timeline_signature": timeline_payload.get("timeline_signature"),
             "compare_previous_saved_id": previous_saved_id,
             "deterministic_signature": deterministic_signature,
@@ -2209,6 +2233,7 @@ class ResearchSessionStore:
             f"- Mode: {record.mode}",
             f"- Runtime Session ID: {record.session_id}",
             f"- Query Class: {record.query_class or 'unknown'}",
+            f"- Research Template: {record.template_id or 'unknown'} ({record.template_title or 'n/a'})",
             f"- Follow-up Context: {record.follow_up_context or 'none'}",
             f"- Archived: {record.archived}",
             f"- Archived At: {record.archived_at or 'n/a'}",

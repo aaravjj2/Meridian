@@ -15,7 +15,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from meridian.agent.react import ResearchAgent
-from meridian.normalisation.schemas import ResearchBrief, TraceStep
+from meridian.agent.templates import list_research_templates, resolve_research_template
+from meridian.normalisation.schemas import (
+    ResearchBrief,
+    ResearchTemplateDefinition,
+    ResearchTemplateId,
+    TraceStep,
+)
 from meridian.workspace.session_store import get_session_store
 
 
@@ -26,10 +32,22 @@ class ResearchRequest(BaseModel):
     question: str = Field(min_length=3)
     mode: str = "demo"
     session_id: str | None = Field(default=None, min_length=4, max_length=64)
+    template_id: ResearchTemplateId | None = None
+
+
+class ResearchTemplateListResponse(BaseModel):
+    templates: list[ResearchTemplateDefinition]
+    count: int
 
 
 SESSION_CACHE_MAX = 64
 SESSION_CONTEXT: dict[str, dict[str, Any]] = {}
+
+
+@router.get("/research/templates")
+async def list_templates() -> ResearchTemplateListResponse:
+    templates = list_research_templates()
+    return ResearchTemplateListResponse(templates=templates, count=len(templates))
 
 
 def _iso_now() -> str:
@@ -627,6 +645,8 @@ def _update_session_context(session_id: str, brief_payload: dict[str, Any], ques
         "last_question": question,
         "last_thesis": brief_payload.get("thesis", ""),
         "last_query_class": brief_payload.get("query_class"),
+        "last_template_id": brief_payload.get("template_id"),
+        "last_template_title": brief_payload.get("template_title"),
         "key_sources": key_sources,
         "updated_at": _iso_now(),
     }
@@ -649,6 +669,8 @@ def _restore_context_from_saved_session(session_id: str) -> dict[str, Any] | Non
         "last_question": saved.question,
         "last_thesis": saved.brief.thesis,
         "last_query_class": saved.brief.query_class,
+        "last_template_id": saved.template_id,
+        "last_template_title": saved.template_title,
         "key_sources": key_sources,
         "updated_at": _iso_now(),
         "restored_from_saved_session": saved.id,
@@ -708,6 +730,7 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
     async def stream_events() -> AsyncGenerator[str, None]:
         session_id = _resolve_session_id(request.session_id)
         run_mode = request.mode.strip().lower()
+        selected_template = resolve_research_template(request.template_id, request.question)
         prior_context = SESSION_CONTEXT.get(session_id)
         if prior_context is None and request.session_id:
             restored_context = _restore_context_from_saved_session(session_id)
@@ -726,15 +749,20 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
                     question=request.question,
                     mode=run_mode,
                     session_context=prior_context,
+                    template_id=selected_template.id,
                 ):
                     last_step = max(last_step, trace_step.step_index)
                     event = _trace_to_event(trace_step)
                     event["session_id"] = session_id
                     event["followup"] = prior_context is not None
+                    event["template_id"] = selected_template.id
                     if event["type"] == "complete":
                         complete_emitted = True
                         brief_payload = event.get("brief")
                         if isinstance(brief_payload, dict):
+                            brief_payload.setdefault("template_id", selected_template.id)
+                            brief_payload.setdefault("template_title", selected_template.title)
+                            brief_payload.setdefault("query_class", selected_template.query_class_default)
                             enriched_brief, evaluation = _attach_provenance_and_evaluation(
                                 brief_payload=brief_payload,
                                 mode=run_mode,
@@ -744,6 +772,7 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
                             event["evaluation"] = evaluation
                             event["provenance"] = enriched_brief.get("provenance_summary")
                             event["snapshot"] = enriched_brief.get("snapshot_summary")
+                            event["template_id"] = enriched_brief.get("template_id")
                             _update_session_context(
                                 session_id=session_id,
                                 brief_payload=enriched_brief,
@@ -760,6 +789,7 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
                 "ts": _iso_now(),
                 "session_id": session_id,
                 "followup": prior_context is not None,
+                "template_id": selected_template.id,
             }
             emitted_events.append(timeout_event)
             yield f"data: {json.dumps(timeout_event)}\n\n"
@@ -773,6 +803,7 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
                 "ts": _iso_now(),
                 "session_id": session_id,
                 "followup": prior_context is not None,
+                "template_id": selected_template.id,
             }
             emitted_events.append(error_event)
             yield f"data: {json.dumps(error_event)}\n\n"
@@ -784,7 +815,9 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
                 "step": last_step + 1,
                 "brief": ResearchBrief(
                     question=request.question,
-                    query_class="macro_outlook",
+                    query_class=selected_template.query_class_default,
+                    template_id=selected_template.id,
+                    template_title=selected_template.title,
                     follow_up_context=(
                         f"Follow-up to prior question: {prior_context.get('last_question')}"
                         if prior_context and prior_context.get("last_question")
@@ -872,6 +905,7 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
                 "session_context_used": prior_context is not None,
                 "session_id": session_id,
                 "followup": prior_context is not None,
+                "template_id": selected_template.id,
             }
             if isinstance(completion.get("brief"), dict):
                 enriched_brief, evaluation = _attach_provenance_and_evaluation(

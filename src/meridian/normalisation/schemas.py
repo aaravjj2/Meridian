@@ -93,6 +93,24 @@ class SourceRef(BaseModel):
     provenance: SourceProvenance | None = None
 
 
+ResearchTemplateId = Literal[
+    "macro_outlook",
+    "event_probability_interpretation",
+    "ticker_macro_framing",
+    "thesis_change_compare",
+]
+
+
+class ResearchTemplateDefinition(BaseModel):
+    id: ResearchTemplateId
+    title: str
+    description: str
+    framing: str
+    query_class_default: Literal["macro_outlook", "event_probability", "ticker_macro"]
+    emphasis: list[str] = Field(default_factory=list)
+    evaluation_expectations: list[str] = Field(default_factory=list)
+
+
 class ResearchEvaluationCheck(BaseModel):
     check_id: str
     passed: bool
@@ -128,6 +146,8 @@ class SignalConflict(BaseModel):
 class ResearchBrief(BaseModel):
     question: str
     query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None = None
+    template_id: ResearchTemplateId | None = None
+    template_title: str | None = None
     follow_up_context: str | None = None
     thesis: str
     bull_case: list[BriefPoint]
@@ -436,6 +456,8 @@ class ResearchCollectionTimelineEntry(BaseModel):
     label: str | None = None
     question: str | None = None
     query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None = None
+    template_id: ResearchTemplateId | None = None
+    template_title: str | None = None
     saved_at: str | None = None
     evaluation_passed: bool | None = None
     snapshot_signature: str | None = None

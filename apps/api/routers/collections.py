@@ -98,6 +98,8 @@ def _collection_bundle_payload(collection: ResearchCollection) -> dict[str, obje
                 "label": saved.label,
                 "thread_session_id": saved.session_id,
                 "query_class": saved.query_class,
+                "template_id": saved.template_id,
+                "template_title": saved.template_title,
                 "saved_at": saved.saved_at,
                 "canonical_signature": saved.canonical_signature,
                 "evaluation_signature": (
@@ -133,6 +135,13 @@ def _collection_bundle_payload(collection: ResearchCollection) -> dict[str, obje
         "timeline_signature": detail.timeline_signature,
         "session_count": len(detail.collection.session_ids),
         "missing_session_count": detail.missing_session_count,
+        "template_ids": sorted(
+            {
+                str(item.get("template_id"))
+                for item in session_rows
+                if item.get("template_id")
+            }
+        ),
     }
 
     files: dict[str, object] = {
