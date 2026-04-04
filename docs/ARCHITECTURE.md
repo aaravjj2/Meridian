@@ -341,6 +341,7 @@ Phase 5 and Phase 6 add management/audit layers over these records:
 - structured pairwise comparison (`/research/sessions/compare`)
 - controlled recapture into a new session with before/after lineage (`/research/sessions/{id}/recapture`)
 - integrity and provenance checks (`/research/sessions/{id}/integrity`, `/research/sessions/integrity`)
+- conflict drift fusion in compare payloads (resolved/unchanged/worsened with claim/source/snapshot links)
 - deterministic provenance/freshness enrichment on each source and brief-level summary
 - source-type freshness policy evaluation with violation tracking in evaluation/integrity flows
 - deterministic snapshot/cache lineage enrichment (`fixture|cache|live_capture|derived`) per source

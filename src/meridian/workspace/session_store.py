@@ -77,6 +77,17 @@ def _cache_lineage_from_snapshot_kind(
     return "unknown"
 
 
+def _conflict_severity_rank(severity: Any) -> int:
+    value = str(severity or "").strip().lower()
+    if value == "high":
+        return 3
+    if value == "medium":
+        return 2
+    if value == "low":
+        return 1
+    return 0
+
+
 def _preview_timestamp(preview: dict[str, Any], keys: list[str]) -> str | None:
     for key in keys:
         raw = preview.get(key)
@@ -219,6 +230,28 @@ class SnapshotDriftReport(BaseModel):
     drift_signature: str
 
 
+class ConflictDriftItem(BaseModel):
+    conflict_id: str
+    title: str
+    state: Literal["resolved", "unchanged", "worsened"]
+    left_severity: str | None = None
+    right_severity: str | None = None
+    claim_refs_added: list[str] = Field(default_factory=list)
+    claim_refs_removed: list[str] = Field(default_factory=list)
+    source_refs_added: list[str] = Field(default_factory=list)
+    source_refs_removed: list[str] = Field(default_factory=list)
+    claim_delta: bool = False
+    source_delta: bool = False
+    snapshot_delta: bool = False
+
+
+class ConflictDriftReport(BaseModel):
+    resolved: list[ConflictDriftItem] = Field(default_factory=list)
+    unchanged: list[ConflictDriftItem] = Field(default_factory=list)
+    worsened: list[ConflictDriftItem] = Field(default_factory=list)
+    drift_signature: str
+
+
 class SessionComparison(BaseModel):
     left_id: str
     right_id: str
@@ -227,6 +260,7 @@ class SessionComparison(BaseModel):
     claim_diffs: dict[str, list[str]] = Field(default_factory=dict)
     source_diffs: dict[str, list[str]] = Field(default_factory=dict)
     snapshot_drift: SnapshotDriftReport
+    conflict_diffs: ConflictDriftReport
     trace_diffs: dict[str, Any] = Field(default_factory=dict)
     summary: dict[str, Any] = Field(default_factory=dict)
 
@@ -1386,6 +1420,79 @@ class ResearchSessionStore:
             drift_signature=snapshot_drift_signature,
         )
 
+        left_conflicts = {conflict.conflict_id: conflict for conflict in left.brief.signal_conflicts}
+        right_conflicts = {conflict.conflict_id: conflict for conflict in right.brief.signal_conflicts}
+        changed_snapshot_source_refs = {
+            item.source_ref for item in snapshot_ids_changed
+        } | {
+            item.source_ref for item in freshness_changed
+        } | set(source_diffs["sources_added"]) | set(source_diffs["sources_removed"])
+
+        resolved_conflicts: list[ConflictDriftItem] = []
+        unchanged_conflicts: list[ConflictDriftItem] = []
+        worsened_conflicts: list[ConflictDriftItem] = []
+        for conflict_id in sorted(set(left_conflicts) | set(right_conflicts)):
+            left_conflict = left_conflicts.get(conflict_id)
+            right_conflict = right_conflicts.get(conflict_id)
+
+            left_claim_refs = set(left_conflict.claim_refs if left_conflict else [])
+            right_claim_refs = set(right_conflict.claim_refs if right_conflict else [])
+            left_source_refs = set(left_conflict.source_refs if left_conflict else [])
+            right_source_refs = set(right_conflict.source_refs if right_conflict else [])
+
+            claim_refs_added = sorted(right_claim_refs - left_claim_refs)
+            claim_refs_removed = sorted(left_claim_refs - right_claim_refs)
+            source_refs_added = sorted(right_source_refs - left_source_refs)
+            source_refs_removed = sorted(left_source_refs - right_source_refs)
+
+            left_rank = _conflict_severity_rank(left_conflict.severity if left_conflict else None)
+            right_rank = _conflict_severity_rank(right_conflict.severity if right_conflict else None)
+            if left_conflict is None and right_conflict is not None:
+                conflict_state: Literal["resolved", "unchanged", "worsened"] = "worsened"
+            elif left_conflict is not None and right_conflict is None:
+                conflict_state = "resolved"
+            elif right_rank > left_rank:
+                conflict_state = "worsened"
+            elif right_rank < left_rank:
+                conflict_state = "resolved"
+            else:
+                conflict_state = "unchanged"
+
+            item = ConflictDriftItem(
+                conflict_id=conflict_id,
+                title=(right_conflict.title if right_conflict else left_conflict.title) if (right_conflict or left_conflict) else conflict_id,
+                state=conflict_state,
+                left_severity=(left_conflict.severity if left_conflict else None),
+                right_severity=(right_conflict.severity if right_conflict else None),
+                claim_refs_added=claim_refs_added,
+                claim_refs_removed=claim_refs_removed,
+                source_refs_added=source_refs_added,
+                source_refs_removed=source_refs_removed,
+                claim_delta=bool(claim_refs_added or claim_refs_removed),
+                source_delta=bool(source_refs_added or source_refs_removed),
+                snapshot_delta=bool((left_source_refs | right_source_refs) & changed_snapshot_source_refs),
+            )
+
+            if conflict_state == "resolved":
+                resolved_conflicts.append(item)
+            elif conflict_state == "worsened":
+                worsened_conflicts.append(item)
+            else:
+                unchanged_conflicts.append(item)
+
+        conflict_drift_payload = {
+            "resolved": [item.model_dump(exclude_none=True) for item in resolved_conflicts],
+            "unchanged": [item.model_dump(exclude_none=True) for item in unchanged_conflicts],
+            "worsened": [item.model_dump(exclude_none=True) for item in worsened_conflicts],
+        }
+        conflict_drift_signature = self._hash_canonical_payload(conflict_drift_payload)
+        conflict_diffs = ConflictDriftReport(
+            resolved=resolved_conflicts,
+            unchanged=unchanged_conflicts,
+            worsened=worsened_conflicts,
+            drift_signature=conflict_drift_signature,
+        )
+
         left_trace_counts = Counter(event.type for event in left.trace_events)
         right_trace_counts = Counter(event.type for event in right.trace_events)
         trace_types = sorted(set(left_trace_counts) | set(right_trace_counts))
@@ -1424,6 +1531,10 @@ class ResearchSessionStore:
             "source_set_changed": source_set_delta_count > 0,
             "evaluation_signature_changed": left_evaluation_signature != right_evaluation_signature,
             "snapshot_drift_signature": snapshot_drift_signature,
+            "resolved_conflict_count": len(resolved_conflicts),
+            "unchanged_conflict_count": len(unchanged_conflicts),
+            "worsened_conflict_count": len(worsened_conflicts),
+            "conflict_drift_signature": conflict_drift_signature,
         }
 
         return SessionComparison(
@@ -1434,6 +1545,7 @@ class ResearchSessionStore:
             claim_diffs=claim_diffs,
             source_diffs=source_diffs,
             snapshot_drift=snapshot_drift,
+            conflict_diffs=conflict_diffs,
             trace_diffs=trace_diffs,
             summary=summary,
         )

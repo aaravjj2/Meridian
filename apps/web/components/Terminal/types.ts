@@ -218,6 +218,51 @@ export type SessionComparison = {
     }>
     drift_signature: string
   }
+  conflict_diffs: {
+    resolved: Array<{
+      conflict_id: string
+      title: string
+      state: 'resolved' | 'unchanged' | 'worsened'
+      left_severity?: string | null
+      right_severity?: string | null
+      claim_refs_added: string[]
+      claim_refs_removed: string[]
+      source_refs_added: string[]
+      source_refs_removed: string[]
+      claim_delta: boolean
+      source_delta: boolean
+      snapshot_delta: boolean
+    }>
+    unchanged: Array<{
+      conflict_id: string
+      title: string
+      state: 'resolved' | 'unchanged' | 'worsened'
+      left_severity?: string | null
+      right_severity?: string | null
+      claim_refs_added: string[]
+      claim_refs_removed: string[]
+      source_refs_added: string[]
+      source_refs_removed: string[]
+      claim_delta: boolean
+      source_delta: boolean
+      snapshot_delta: boolean
+    }>
+    worsened: Array<{
+      conflict_id: string
+      title: string
+      state: 'resolved' | 'unchanged' | 'worsened'
+      left_severity?: string | null
+      right_severity?: string | null
+      claim_refs_added: string[]
+      claim_refs_removed: string[]
+      source_refs_added: string[]
+      source_refs_removed: string[]
+      claim_delta: boolean
+      source_delta: boolean
+      snapshot_delta: boolean
+    }>
+    drift_signature: string
+  }
   trace_diffs: {
     left_event_count: number
     right_event_count: number
@@ -239,6 +284,10 @@ export type SessionComparison = {
     source_set_changed: boolean
     evaluation_signature_changed: boolean
     snapshot_drift_signature: string
+    resolved_conflict_count: number
+    unchanged_conflict_count: number
+    worsened_conflict_count: number
+    conflict_drift_signature: string
   }
 }
 

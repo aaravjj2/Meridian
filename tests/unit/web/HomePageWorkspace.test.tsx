@@ -443,6 +443,42 @@ describe('HomePage workspace persistence', () => {
             ],
             drift_signature: 'drift-sig-123',
           },
+          conflict_diffs: {
+            resolved: [],
+            unchanged: [
+              {
+                conflict_id: 'conflict-curve-interpretation',
+                title: 'Curve interpretation split',
+                state: 'unchanged',
+                left_severity: 'medium',
+                right_severity: 'medium',
+                claim_refs_added: [],
+                claim_refs_removed: [],
+                source_refs_added: [],
+                source_refs_removed: [],
+                claim_delta: false,
+                source_delta: false,
+                snapshot_delta: true,
+              },
+            ],
+            worsened: [
+              {
+                conflict_id: 'conflict-inflation-tail-risk',
+                title: 'Inflation tail risk re-pricing',
+                state: 'worsened',
+                left_severity: 'medium',
+                right_severity: 'high',
+                claim_refs_added: ['risk-2-inflation-surprise'],
+                claim_refs_removed: [],
+                source_refs_added: ['fred:CPIAUCSL'],
+                source_refs_removed: [],
+                claim_delta: true,
+                source_delta: true,
+                snapshot_delta: true,
+              },
+            ],
+            drift_signature: 'conflict-drift-sig-987',
+          },
           trace_diffs: {
             left_event_count: 2,
             right_event_count: 2,
@@ -464,6 +500,10 @@ describe('HomePage workspace persistence', () => {
             source_set_changed: true,
             evaluation_signature_changed: true,
             snapshot_drift_signature: 'drift-sig-123',
+            resolved_conflict_count: 0,
+            unchanged_conflict_count: 1,
+            worsened_conflict_count: 1,
+            conflict_drift_signature: 'conflict-drift-sig-987',
           },
         })
       ),
@@ -611,6 +651,9 @@ describe('HomePage workspace persistence', () => {
     expect(screen.getByTestId('workspace-compare-drift-source-set')).toHaveTextContent('yes')
     expect(screen.getByTestId('workspace-compare-snapshot-id-change-0')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-compare-freshness-change-0')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-compare-conflict-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-compare-conflict-worsened-count')).toHaveTextContent('1')
+    expect(screen.getByTestId('workspace-compare-conflict-item-0')).toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('workspace-recapture-0'))
     expect(await screen.findByTestId('workspace-recapture-lineage')).toBeInTheDocument()

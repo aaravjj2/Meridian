@@ -37,6 +37,8 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await expect(page.getByTestId('workspace-compare-drift-freshness-count')).toBeVisible()
   await expect(page.getByTestId('workspace-compare-drift-source-set')).toBeVisible()
   await expect(page.getByTestId('workspace-compare-drift-evaluation-signature')).toBeVisible()
+  await expect(page.getByTestId('workspace-compare-conflict-panel')).toBeVisible()
+  await expect(page.getByTestId('workspace-compare-conflict-worsened-count')).toBeVisible()
 
   await page.getByTestId('workspace-recapture-0').click()
   await expect(page.getByTestId('workspace-status')).toContainText('Recaptured', { timeout: 10000 })

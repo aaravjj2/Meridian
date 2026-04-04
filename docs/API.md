@@ -240,6 +240,7 @@ Response includes:
 - `claim_diffs`
 - `source_diffs`
 - `snapshot_drift`
+- `conflict_diffs`
 - `trace_diffs`
 - `summary`
 
@@ -250,6 +251,14 @@ Wave 8 snapshot drift fields:
 - `snapshot_drift.source_set_changed`: whether source membership changed between sessions
 - `snapshot_drift.evaluation_signature_changed`: whether deterministic evaluation signature changed
 - `snapshot_drift.drift_signature`: deterministic hash of the snapshot-drift payload
+
+Wave 11 conflict drift fields:
+
+- `conflict_diffs.resolved`: conflicts removed or improved in severity
+- `conflict_diffs.unchanged`: conflicts with unchanged severity/state
+- `conflict_diffs.worsened`: conflicts added or worsened in severity
+- each conflict drift item links claim/source/snapshot drift via `claim_delta`, `source_delta`, `snapshot_delta`
+- `conflict_diffs.drift_signature`: deterministic hash of the conflict-drift payload
 
 ### POST /api/v1/research/sessions/{saved_id}/recapture
 

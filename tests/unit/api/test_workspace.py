@@ -180,6 +180,8 @@ def test_workspace_saved_session_signature_is_deterministic_for_demo_runs() -> N
     assert drift_a["source_set_changed"] is False
     assert drift_a["snapshot_ids_changed"] == []
     assert drift_a["freshness_changed"] == []
+    assert compare_a.json()["conflict_diffs"]["drift_signature"] == compare_b.json()["conflict_diffs"]["drift_signature"]
+    assert compare_a.json()["summary"]["worsened_conflict_count"] == 0
 
     recapture_first = client.post(f"/api/v1/research/sessions/{saved_a.json()['id']}/recapture")
     recapture_second = client.post(f"/api/v1/research/sessions/{saved_a.json()['id']}/recapture")
@@ -305,11 +307,16 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
     assert "summary" in comparison_payload
     assert "trace_diffs" in comparison_payload
     assert "snapshot_drift" in comparison_payload
+    assert "conflict_diffs" in comparison_payload
     assert comparison_payload["snapshot_drift"]["drift_signature"]
+    assert comparison_payload["conflict_diffs"]["drift_signature"]
     assert isinstance(comparison_payload["snapshot_drift"]["snapshot_ids_changed"], list)
     assert isinstance(comparison_payload["snapshot_drift"]["freshness_changed"], list)
     assert isinstance(comparison_payload["snapshot_drift"]["source_set_changed"], bool)
     assert isinstance(comparison_payload["snapshot_drift"]["evaluation_signature_changed"], bool)
+    assert isinstance(comparison_payload["conflict_diffs"]["resolved"], list)
+    assert isinstance(comparison_payload["conflict_diffs"]["unchanged"], list)
+    assert isinstance(comparison_payload["conflict_diffs"]["worsened"], list)
 
     recaptured = client.post(f"/api/v1/research/sessions/{first_id}/recapture")
     assert recaptured.status_code == 200

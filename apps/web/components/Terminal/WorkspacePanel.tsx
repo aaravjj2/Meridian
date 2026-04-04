@@ -305,6 +305,44 @@ export default function WorkspacePanel({
                 <p data-testid="workspace-compare-freshness-change-none">No freshness drift.</p>
               )}
             </div>
+            <div className="workspace-compare-drift" data-testid="workspace-compare-conflict-panel">
+              <p data-testid="workspace-compare-conflict-signature">
+                Conflict drift signature: {comparisonResult.conflict_diffs.drift_signature}
+              </p>
+              <p data-testid="workspace-compare-conflict-resolved-count">
+                Resolved conflicts: {comparisonResult.conflict_diffs.resolved.length}
+              </p>
+              <p data-testid="workspace-compare-conflict-unchanged-count">
+                Unchanged conflicts: {comparisonResult.conflict_diffs.unchanged.length}
+              </p>
+              <p data-testid="workspace-compare-conflict-worsened-count">
+                Worsened conflicts: {comparisonResult.conflict_diffs.worsened.length}
+              </p>
+              {[
+                ...comparisonResult.conflict_diffs.worsened,
+                ...comparisonResult.conflict_diffs.resolved,
+                ...comparisonResult.conflict_diffs.unchanged,
+              ].length > 0 ? (
+                <ul className="workspace-compare-drift-list" data-testid="workspace-compare-conflict-list">
+                  {[
+                    ...comparisonResult.conflict_diffs.worsened,
+                    ...comparisonResult.conflict_diffs.resolved,
+                    ...comparisonResult.conflict_diffs.unchanged,
+                  ]
+                    .slice(0, 6)
+                    .map((conflict, idx) => (
+                      <li key={`${conflict.conflict_id}-${idx}`} data-testid={`workspace-compare-conflict-item-${idx}`}>
+                        {conflict.state.toUpperCase()} {conflict.conflict_id}: claims 
+                        {conflict.claim_delta ? 'changed' : 'stable'}, sources 
+                        {conflict.source_delta ? 'changed' : 'stable'}, snapshots 
+                        {conflict.snapshot_delta ? 'changed' : 'stable'}
+                      </li>
+                    ))}
+                </ul>
+              ) : (
+                <p data-testid="workspace-compare-conflict-item-none">No conflict drift.</p>
+              )}
+            </div>
           </div>
         ) : null}
       </div>

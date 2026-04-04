@@ -130,8 +130,31 @@ Canonical signature notes:
 - `claim_diffs: { bull_added, bull_removed, bear_added, bear_removed, risk_added, risk_removed }`
 - `source_diffs: { sources_added, sources_removed }`
 - `snapshot_drift: SnapshotDriftReport`
+- `conflict_diffs: ConflictDriftReport`
 - `trace_diffs: { left_event_count, right_event_count, event_count_delta, event_type_deltas, left_step_range, right_step_range }`
-- `summary: { changed_fields, total_changed_fields, total_claim_changes, total_source_changes, thesis_changed, confidence_changed, signature_match, snapshot_id_changes, freshness_changes, source_set_changed, evaluation_signature_changed, snapshot_drift_signature }`
+- `summary: { changed_fields, total_changed_fields, total_claim_changes, total_source_changes, thesis_changed, confidence_changed, signature_match, snapshot_id_changes, freshness_changes, source_set_changed, evaluation_signature_changed, snapshot_drift_signature, resolved_conflict_count, unchanged_conflict_count, worsened_conflict_count, conflict_drift_signature }`
+
+## ConflictDriftItem
+
+- `conflict_id: str`
+- `title: str`
+- `state: "resolved" | "unchanged" | "worsened"`
+- `left_severity: str | null`
+- `right_severity: str | null`
+- `claim_refs_added: list[str]`
+- `claim_refs_removed: list[str]`
+- `source_refs_added: list[str]`
+- `source_refs_removed: list[str]`
+- `claim_delta: bool`
+- `source_delta: bool`
+- `snapshot_delta: bool`
+
+## ConflictDriftReport
+
+- `resolved: list[ConflictDriftItem]`
+- `unchanged: list[ConflictDriftItem]`
+- `worsened: list[ConflictDriftItem]`
+- `drift_signature: str`
 
 ## SnapshotDriftReport
 
