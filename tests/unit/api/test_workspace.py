@@ -74,7 +74,8 @@ def test_workspace_save_list_get_and_export_roundtrip() -> None:
     assert saved["session_id"] == thread_id
     assert saved["canonical_signature"]
     assert saved["brief"]["provenance_summary"]["source_count"] >= 3
-    assert saved["evaluation"]["version"] == "phase-6"
+    assert saved["brief"]["snapshot_summary"]["snapshot_count"] >= 3
+    assert saved["evaluation"]["version"] == "phase-7"
     assert saved["evaluation"]["passed"] is True
 
     listed = client.get("/api/v1/research/sessions")
@@ -83,6 +84,8 @@ def test_workspace_save_list_get_and_export_roundtrip() -> None:
     assert listing["count"] == 1
     assert listing["sessions"][0]["id"] == saved["id"]
     assert listing["sessions"][0]["evaluation_passed"] is True
+    assert isinstance(listing["sessions"][0]["snapshot_kind_counts"], dict)
+    assert listing["sessions"][0]["snapshot_signature"]
 
     loaded = client.get(f"/api/v1/research/sessions/{saved['id']}")
     assert loaded.status_code == 200
@@ -144,6 +147,35 @@ def test_workspace_saved_session_signature_is_deterministic_for_demo_runs() -> N
         saved_a.json()["evaluation"]["deterministic_signature"]
         == saved_b.json()["evaluation"]["deterministic_signature"]
     )
+    assert saved_a.json()["brief"]["snapshot_summary"] == saved_b.json()["brief"]["snapshot_summary"]
+
+    bundle_a = client.get(f"/api/v1/research/sessions/{saved_a.json()['id']}/bundle")
+    bundle_b = client.get(f"/api/v1/research/sessions/{saved_b.json()['id']}/bundle")
+    assert bundle_a.status_code == 200
+    assert bundle_b.status_code == 200
+    assert (
+        bundle_a.json()["snapshot_provenance"]["signature_sha256"]
+        == bundle_b.json()["snapshot_provenance"]["signature_sha256"]
+    )
+
+    compare_a = client.get(
+        "/api/v1/research/sessions/compare",
+        params={"left_id": saved_a.json()["id"], "right_id": saved_b.json()["id"]},
+    )
+    compare_b = client.get(
+        "/api/v1/research/sessions/compare",
+        params={"left_id": saved_a.json()["id"], "right_id": saved_b.json()["id"]},
+    )
+    assert compare_a.status_code == 200
+    assert compare_b.status_code == 200
+    drift_a = compare_a.json()["snapshot_drift"]
+    drift_b = compare_b.json()["snapshot_drift"]
+    assert drift_a["drift_signature"] == drift_b["drift_signature"]
+    assert drift_a["snapshot_signature_changed"] is False
+    assert drift_a["evaluation_signature_changed"] is False
+    assert drift_a["source_set_changed"] is False
+    assert drift_a["snapshot_ids_changed"] == []
+    assert drift_a["freshness_changed"] == []
 
 
 def test_workspace_continue_from_saved_restores_followup_context() -> None:
@@ -253,6 +285,12 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
     assert comparison_payload["right_id"] == second_id
     assert "summary" in comparison_payload
     assert "trace_diffs" in comparison_payload
+    assert "snapshot_drift" in comparison_payload
+    assert comparison_payload["snapshot_drift"]["drift_signature"]
+    assert isinstance(comparison_payload["snapshot_drift"]["snapshot_ids_changed"], list)
+    assert isinstance(comparison_payload["snapshot_drift"]["freshness_changed"], list)
+    assert isinstance(comparison_payload["snapshot_drift"]["source_set_changed"], bool)
+    assert isinstance(comparison_payload["snapshot_drift"]["evaluation_signature_changed"], bool)
 
     integrity_single = client.get(f"/api/v1/research/sessions/{first_id}/integrity")
     assert integrity_single.status_code == 200
@@ -261,6 +299,11 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
     assert integrity_payload["signature_valid"] is True
     assert integrity_payload["provenance_complete"] is True
     assert integrity_payload["freshness_valid"] is True
+    assert integrity_payload["snapshot_complete"] is True
+    assert integrity_payload["snapshot_consistent"] is True
+    assert integrity_payload["snapshot_summary_present"] is True
+    assert integrity_payload["snapshot_checksum_complete"] is True
+    assert integrity_payload["bundle_snapshot_signature"]
     assert integrity_payload["evaluation_present"] is True
     assert integrity_payload["evaluation_valid"] is True
     assert integrity_payload["issues"] == []
@@ -274,10 +317,12 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
     assert bundle_response.status_code == 200
     assert "application/json" in bundle_response.headers["content-type"]
     bundle_payload = bundle_response.json()
-    assert bundle_payload["bundle_version"] == "phase-6"
+    assert bundle_payload["bundle_version"] == "phase-7"
     assert bundle_payload["session"]["id"] == first_id
     assert bundle_payload["integrity"]["signature_valid"] is True
-    assert bundle_payload["evaluation"]["version"] == "phase-6"
+    assert bundle_payload["evaluation"]["version"] == "phase-7"
+    assert bundle_payload["snapshot_provenance"]["summary"]["snapshot_count"] >= 1
+    assert bundle_payload["snapshot_provenance"]["signature_sha256"]
 
     deleted = client.delete(f"/api/v1/research/sessions/{first_id}")
     assert deleted.status_code == 200

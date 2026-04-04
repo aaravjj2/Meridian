@@ -341,8 +341,11 @@ Phase 5 and Phase 6 add management/audit layers over these records:
 - structured pairwise comparison (`/research/sessions/compare`)
 - integrity and provenance checks (`/research/sessions/{id}/integrity`, `/research/sessions/integrity`)
 - deterministic provenance/freshness enrichment on each source and brief-level summary
+- deterministic snapshot/cache lineage enrichment (`fixture|cache|live_capture|derived`) per source
+- snapshot-level provenance summaries with checksum coverage and lineage counts
+- snapshot drift analysis in compare payloads (snapshot ids, freshness deltas, source-set deltas, evaluation signature drift)
 - deterministic evaluation checks with stable signatures for reproducibility
-- self-contained bundle export (`/research/sessions/{id}/bundle`) including integrity + evaluation payloads
+- self-contained bundle export (`/research/sessions/{id}/bundle`) including integrity + evaluation + snapshot provenance payloads
 
 Canonical signatures are computed from analytical content (question, brief, trace, evidence state) and intentionally exclude mutable management metadata (`label`, archive state, timestamps).
 

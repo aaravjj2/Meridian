@@ -25,6 +25,7 @@
 - `sources: list[{ type, id, excerpt, claim_refs?, preview?, provenance? }]`
 - `signal_conflicts: list[{ conflict_id, title, summary, severity, claim_refs, source_refs }]`
 - `provenance_summary: dict | null` (captured_at, mode, source_count, freshness_counts)
+- `snapshot_summary: dict | null` (snapshot_count, snapshot_kind_counts, cache_lineage_counts, freshness_by_snapshot_kind, snapshot_checksum_coverage)
 - `created_at: str (ISO)`
 - `trace_steps: list[int]`
 
@@ -35,24 +36,53 @@ Validation notes:
 - `signal_conflicts[].claim_refs` must reference valid `claim_id` values.
 - `signal_conflicts[].source_refs` uses `type:id` format (example: `fred:T10Y2Y`).
 
+## SnapshotProvenance
+
+- `snapshot_id: str`
+- `snapshot_kind: "fixture" | "cache" | "live_capture" | "derived" | "unknown"`
+- `dataset: str` (source dataset label, e.g. `fred:T10Y2Y`)
+- `dataset_version: str | null` (fixture/snapshot version label)
+- `generated_at: str | null`
+- `cached_at: str | null`
+- `fetched_at: str | null`
+- `checksum_sha256: str | null`
+- `deterministic: bool`
+
+Snapshot meaning guidance:
+
+- `fixture`: deterministic fixture-backed snapshot (demo-safe)
+- `cache`: replayed from cached snapshot state
+- `live_capture`: fetched through a fresher pull path
+- `derived`: computed/derived from upstream snapshots
+- `unknown`: metadata insufficient; should be treated as degraded provenance
+
 ## SourceProvenance
 
 - `source_ref: str` (`type:id`)
 - `tool_name: str`
 - `mode: "demo" | "live"`
+- `cache_lineage: "fixture" | "cache" | "fresh_pull" | "derived" | "unknown"`
 - `observed_at: str | null`
 - `captured_at: str`
 - `freshness: "fresh" | "aging" | "stale" | "unknown"`
 - `freshness_hours: float | null`
 - `deterministic: bool`
+- `snapshot: SnapshotProvenance | null`
 
 ## ResearchEvaluationReport
 
-- `version: str` (currently `phase-6`)
+- `version: str` (currently `phase-7`)
 - `deterministic_signature: str` (SHA256 over stable evaluation projection)
 - `passed: bool`
 - `checks: list[{ check_id, passed, detail, value? }]`
 - `metrics: dict[str, Any]`
+
+Phase 7 snapshot-aware checks include:
+
+- `snapshot_metadata_complete`
+- `snapshot_source_consistency`
+- `cache_lineage_visibility`
+- `bundle_snapshot_provenance_ready`
 
 ## TraceStep
 
@@ -95,8 +125,41 @@ Canonical signature notes:
 - `metadata_diffs: list[{ field, left, right, changed }]`
 - `claim_diffs: { bull_added, bull_removed, bear_added, bear_removed, risk_added, risk_removed }`
 - `source_diffs: { sources_added, sources_removed }`
+- `snapshot_drift: SnapshotDriftReport`
 - `trace_diffs: { left_event_count, right_event_count, event_count_delta, event_type_deltas, left_step_range, right_step_range }`
-- `summary: { changed_fields, total_changed_fields, total_claim_changes, total_source_changes, thesis_changed, confidence_changed, signature_match }`
+- `summary: { changed_fields, total_changed_fields, total_claim_changes, total_source_changes, thesis_changed, confidence_changed, signature_match, snapshot_id_changes, freshness_changes, source_set_changed, evaluation_signature_changed, snapshot_drift_signature }`
+
+## SnapshotDriftReport
+
+- `left_snapshot_signature: str`
+- `right_snapshot_signature: str`
+- `snapshot_signature_changed: bool`
+- `left_evaluation_signature: str | null`
+- `right_evaluation_signature: str | null`
+- `evaluation_signature_changed: bool`
+- `source_set_changed: bool`
+- `source_set_delta_count: int`
+- `sources_added: list[str]`
+- `sources_removed: list[str]`
+- `snapshot_ids_changed: list[SnapshotIdDrift]`
+- `freshness_changed: list[FreshnessDrift]`
+- `drift_signature: str`
+
+## SnapshotIdDrift
+
+- `source_ref: str`
+- `left_snapshot_id: str | null`
+- `right_snapshot_id: str | null`
+- `left_snapshot_kind: str | null`
+- `right_snapshot_kind: str | null`
+
+## FreshnessDrift
+
+- `source_ref: str`
+- `left_freshness: str | null`
+- `right_freshness: str | null`
+- `left_freshness_hours: float | null`
+- `right_freshness_hours: float | null`
 
 ## SessionIntegrityReport
 
@@ -110,9 +173,14 @@ Canonical signature notes:
 - `evidence_state_valid: bool`
 - `provenance_complete: bool`
 - `freshness_valid: bool`
+- `snapshot_complete: bool`
+- `snapshot_consistent: bool`
+- `snapshot_summary_present: bool`
+- `snapshot_checksum_complete: bool`
 - `evaluation_present: bool`
 - `evaluation_valid: bool`
 - `evaluation_signature: str | null`
+- `bundle_snapshot_signature: str | null`
 - `issues: list[str]`
 - `checked_at: str (ISO)`
 - `provenance: dict[str, Any]`
@@ -124,7 +192,8 @@ Canonical signature notes:
 - `session: SavedResearchSession`
 - `integrity: SessionIntegrityReport`
 - `evaluation: ResearchEvaluationReport | null`
-- `provenance: { source, app_version, model, mode, freshness_counts, evaluation_signature }`
+- `snapshot_provenance: { summary, sources, signature_sha256 }`
+- `provenance: { source, app_version, model, mode, freshness_counts, snapshot_kind_counts, cache_lineage_counts, snapshot_signature, evaluation_signature }`
 
 ## MispricingScore
 

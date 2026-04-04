@@ -102,6 +102,75 @@ def _hash_payload(payload: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _normalize_snapshot_kind(value: Any) -> str:
+    candidate = str(value or "").strip().lower()
+    if candidate in {"fixture", "cache", "live_capture", "derived", "unknown"}:
+        return candidate
+    return "unknown"
+
+
+def _cache_lineage_from_snapshot_kind(snapshot_kind: str) -> str:
+    if snapshot_kind == "fixture":
+        return "fixture"
+    if snapshot_kind == "cache":
+        return "cache"
+    if snapshot_kind == "live_capture":
+        return "fresh_pull"
+    if snapshot_kind == "derived":
+        return "derived"
+    return "unknown"
+
+
+def _preview_timestamp(preview: dict[str, Any], keys: list[str]) -> str | None:
+    for key in keys:
+        raw = preview.get(key)
+        if isinstance(raw, str) and raw.strip():
+            if "T" in raw:
+                return raw
+            return f"{raw}T00:00:00Z"
+    return None
+
+
+def _snapshot_kind_for_source(
+    source: dict[str, Any],
+    mode: str,
+    existing_snapshot: dict[str, Any],
+) -> str:
+    explicit = _normalize_snapshot_kind(existing_snapshot.get("snapshot_kind"))
+    if explicit != "unknown":
+        return explicit
+
+    preview = source.get("preview") if isinstance(source.get("preview"), dict) else {}
+    hinted = _normalize_snapshot_kind(preview.get("snapshot_kind") or preview.get("snapshot_source"))
+    if hinted != "unknown":
+        return hinted
+
+    if mode == "demo":
+        return "fixture"
+
+    if any(key in preview for key in ["cached_at", "cache_timestamp", "cache_key", "cache_hit", "cache_snapshot_id"]):
+        return "cache"
+    if any(key in preview for key in ["derived_from", "computed_from", "calculation", "model_version"]):
+        return "derived"
+
+    if mode == "live":
+        return "live_capture"
+    return "unknown"
+
+
+def _snapshot_dataset(source_type: str, source_id: str, preview: dict[str, Any]) -> str:
+    if source_type == "fred":
+        return f"fred:{str(preview.get('series_id') or source_id)}"
+    if source_type == "market":
+        platform = str(preview.get("platform") or "market")
+        return f"{platform}:{source_id}"
+    if source_type == "edgar":
+        return f"edgar:{str(preview.get('cik') or source_id)}"
+    if source_type == "news":
+        return f"news:{str(preview.get('topic') or source_id)}"
+    return f"{source_type}:{source_id}"
+
+
 def _claim_ids_from_brief(brief: dict[str, Any]) -> set[str]:
     ids: set[str] = set()
     for section, field in (("bull_case", "point"), ("bear_case", "point"), ("key_risks", "risk")):
@@ -126,6 +195,16 @@ def _attach_provenance_and_evaluation(
     captured_at = str(brief.get("created_at") or _iso_now())
     sources = brief.get("sources", [])
     freshness_counts: Counter[str] = Counter()
+    snapshot_kind_counts: Counter[str] = Counter()
+    cache_lineage_counts: Counter[str] = Counter()
+    freshness_by_snapshot_kind: dict[str, Counter[str]] = {
+        "fixture": Counter(),
+        "cache": Counter(),
+        "live_capture": Counter(),
+        "derived": Counter(),
+        "unknown": Counter(),
+    }
+    snapshot_checksum_coverage = 0
 
     if not isinstance(sources, list):
         sources = []
@@ -137,7 +216,9 @@ def _attach_provenance_and_evaluation(
         source_type = str(source.get("type") or "")
         source_id = str(source.get("id") or "")
         source_ref = f"{source_type}:{source_id}"
+        preview = source.get("preview") if isinstance(source.get("preview"), dict) else {}
         existing = source.get("provenance") if isinstance(source.get("provenance"), dict) else {}
+        existing_snapshot = existing.get("snapshot") if isinstance(existing.get("snapshot"), dict) else {}
         observed_at = str(existing.get("observed_at") or _derive_observed_at(source, captured_at))
         freshness, freshness_hours = _compute_freshness(observed_at=observed_at, captured_at=captured_at)
         freshness_value = str(existing.get("freshness") or freshness)
@@ -147,17 +228,83 @@ def _attach_provenance_and_evaluation(
         if source_mode not in {"demo", "live"}:
             source_mode = "demo" if mode == "demo" else "live"
 
+        snapshot_kind = _snapshot_kind_for_source(
+            source=source,
+            mode=source_mode,
+            existing_snapshot=existing_snapshot,
+        )
+        cache_lineage = str(existing.get("cache_lineage") or _cache_lineage_from_snapshot_kind(snapshot_kind))
+        if cache_lineage not in {"fixture", "cache", "fresh_pull", "derived", "unknown"}:
+            cache_lineage = _cache_lineage_from_snapshot_kind(snapshot_kind)
+
+        dataset = str(existing_snapshot.get("dataset") or _snapshot_dataset(source_type, source_id, preview))
+        dataset_version = existing_snapshot.get("dataset_version") or preview.get("dataset_version")
+        if source_mode == "demo" and not dataset_version:
+            dataset_version = "demo-fixture-v1"
+
+        generated_at = (
+            existing_snapshot.get("generated_at")
+            or _preview_timestamp(preview, ["generated_at", "snapshot_generated_at", "as_of", "last_updated", "updated_at", "filed_date"])
+        )
+        cached_at = existing_snapshot.get("cached_at") or _preview_timestamp(
+            preview, ["cached_at", "cache_timestamp", "cache_as_of"]
+        )
+        fetched_at = existing_snapshot.get("fetched_at") or _preview_timestamp(
+            preview, ["fetched_at", "retrieved_at"]
+        )
+
+        if snapshot_kind == "fixture":
+            generated_at = generated_at or observed_at
+        elif snapshot_kind == "cache":
+            cached_at = cached_at or observed_at
+        elif snapshot_kind == "live_capture":
+            fetched_at = fetched_at or captured_at
+        elif snapshot_kind == "derived":
+            generated_at = generated_at or captured_at
+
+        snapshot_signature_payload = {
+            "source_ref": source_ref,
+            "snapshot_kind": snapshot_kind,
+            "dataset": dataset,
+            "dataset_version": dataset_version,
+            "generated_at": generated_at,
+            "cached_at": cached_at,
+            "fetched_at": fetched_at,
+            "preview_kind": preview.get("kind"),
+            "mode": source_mode,
+        }
+        checksum_sha256 = str(existing_snapshot.get("checksum_sha256") or _hash_payload(snapshot_signature_payload))
+        snapshot_id = str(existing_snapshot.get("snapshot_id") or f"snap-{checksum_sha256[:12]}")
+        deterministic_snapshot = bool(existing_snapshot.get("deterministic", source_mode == "demo"))
+
         source["provenance"] = {
             "source_ref": source_ref,
             "tool_name": str(existing.get("tool_name") or _source_tool_name(source_type)),
             "mode": source_mode,
+            "cache_lineage": cache_lineage,
             "observed_at": observed_at,
             "captured_at": str(existing.get("captured_at") or captured_at),
             "freshness": freshness_value,
             "freshness_hours": existing.get("freshness_hours", freshness_hours),
             "deterministic": bool(existing.get("deterministic", mode == "demo")),
+            "snapshot": {
+                "snapshot_id": snapshot_id,
+                "snapshot_kind": snapshot_kind,
+                "dataset": dataset,
+                "dataset_version": dataset_version,
+                "generated_at": generated_at,
+                "cached_at": cached_at,
+                "fetched_at": fetched_at,
+                "checksum_sha256": checksum_sha256,
+                "deterministic": deterministic_snapshot,
+            },
         }
         freshness_counts[source["provenance"]["freshness"]] += 1
+        snapshot_kind_counts[snapshot_kind] += 1
+        cache_lineage_counts[cache_lineage] += 1
+        freshness_by_snapshot_kind[snapshot_kind][source["provenance"]["freshness"]] += 1
+        if checksum_sha256:
+            snapshot_checksum_coverage += 1
 
     brief["provenance_summary"] = {
         "captured_at": captured_at,
@@ -170,6 +317,37 @@ def _attach_provenance_and_evaluation(
             "stale": freshness_counts.get("stale", 0),
             "unknown": freshness_counts.get("unknown", 0),
         },
+    }
+
+    brief["snapshot_summary"] = {
+        "captured_at": captured_at,
+        "mode": mode,
+        "deterministic": mode == "demo",
+        "snapshot_count": len(sources),
+        "snapshot_kind_counts": {
+            "fixture": snapshot_kind_counts.get("fixture", 0),
+            "cache": snapshot_kind_counts.get("cache", 0),
+            "live_capture": snapshot_kind_counts.get("live_capture", 0),
+            "derived": snapshot_kind_counts.get("derived", 0),
+            "unknown": snapshot_kind_counts.get("unknown", 0),
+        },
+        "cache_lineage_counts": {
+            "fixture": cache_lineage_counts.get("fixture", 0),
+            "cache": cache_lineage_counts.get("cache", 0),
+            "fresh_pull": cache_lineage_counts.get("fresh_pull", 0),
+            "derived": cache_lineage_counts.get("derived", 0),
+            "unknown": cache_lineage_counts.get("unknown", 0),
+        },
+        "freshness_by_snapshot_kind": {
+            kind: {
+                "fresh": counters.get("fresh", 0),
+                "aging": counters.get("aging", 0),
+                "stale": counters.get("stale", 0),
+                "unknown": counters.get("unknown", 0),
+            }
+            for kind, counters in freshness_by_snapshot_kind.items()
+        },
+        "snapshot_checksum_coverage": snapshot_checksum_coverage,
     }
 
     claim_ids = _claim_ids_from_brief(brief)
@@ -191,6 +369,30 @@ def _attach_provenance_and_evaluation(
         and isinstance(source.get("provenance"), dict)
         and bool(source["provenance"].get("deterministic"))
     )
+    snapshot_records = [
+        source.get("provenance", {}).get("snapshot")
+        for source in sources
+        if isinstance(source, dict) and isinstance(source.get("provenance"), dict)
+    ]
+    snapshot_metadata_complete = all(
+        isinstance(snapshot, dict)
+        and str(snapshot.get("snapshot_id") or "").strip()
+        and str(snapshot.get("dataset") or "").strip()
+        and _normalize_snapshot_kind(snapshot.get("snapshot_kind")) != "unknown"
+        for snapshot in snapshot_records
+    )
+    snapshot_source_consistency = all(
+        isinstance(source, dict)
+        and isinstance(source.get("provenance"), dict)
+        and isinstance(source["provenance"].get("snapshot"), dict)
+        and (
+            source["provenance"].get("mode") != "demo"
+            or source["provenance"]["snapshot"].get("snapshot_kind") in {"fixture", "derived"}
+        )
+        for source in sources
+    )
+    cache_lineage_visibility = sum(cache_lineage_counts.values()) == len(sources)
+    bundle_snapshot_ready = snapshot_checksum_coverage == len(sources) and snapshot_metadata_complete
 
     checks = [
         {
@@ -226,6 +428,30 @@ def _attach_provenance_and_evaluation(
             "detail": "Demo mode sources should all be deterministic.",
             "value": deterministic_sources,
         },
+        {
+            "check_id": "snapshot_metadata_complete",
+            "passed": snapshot_metadata_complete,
+            "detail": "Every source includes snapshot id, kind, and dataset metadata.",
+            "value": len(snapshot_records),
+        },
+        {
+            "check_id": "snapshot_source_consistency",
+            "passed": snapshot_source_consistency,
+            "detail": "Snapshot labels are consistent with source mode and lineage semantics.",
+            "value": len(sources),
+        },
+        {
+            "check_id": "cache_lineage_visibility",
+            "passed": cache_lineage_visibility,
+            "detail": "Snapshot summary exposes cache lineage coverage for all sources.",
+            "value": sum(cache_lineage_counts.values()),
+        },
+        {
+            "check_id": "bundle_snapshot_provenance_ready",
+            "passed": bundle_snapshot_ready,
+            "detail": "Snapshot checksum coverage is complete for offline bundle auditing.",
+            "value": snapshot_checksum_coverage,
+        },
     ]
 
     signature_payload = {
@@ -248,12 +474,31 @@ def _attach_provenance_and_evaluation(
             for source in sources
             if isinstance(source, dict)
         },
+        "source_snapshot_kind": {
+            f"{source.get('type')}:{source.get('id')}": (
+                source.get("provenance", {}).get("snapshot", {}).get("snapshot_kind")
+                if isinstance(source, dict)
+                else "unknown"
+            )
+            for source in sources
+            if isinstance(source, dict)
+        },
+        "source_cache_lineage": {
+            f"{source.get('type')}:{source.get('id')}": (
+                source.get("provenance", {}).get("cache_lineage")
+                if isinstance(source, dict)
+                else "unknown"
+            )
+            for source in sources
+            if isinstance(source, dict)
+        },
+        "snapshot_summary": brief.get("snapshot_summary"),
         "trace_steps": trace_steps,
         "trace_types": [str(event.get("type", "")) for event in trace_events],
     }
 
     evaluation = {
-        "version": "phase-6",
+        "version": "phase-7",
         "deterministic_signature": _hash_payload(signature_payload),
         "passed": all(bool(check.get("passed")) for check in checks),
         "checks": checks,
@@ -264,6 +509,13 @@ def _attach_provenance_and_evaluation(
             "stale_source_count": freshness_counts.get("stale", 0),
             "unknown_source_count": unknown_count,
             "deterministic_source_count": deterministic_sources,
+            "snapshot_count": len(snapshot_records),
+            "fixture_snapshot_count": snapshot_kind_counts.get("fixture", 0),
+            "cache_snapshot_count": snapshot_kind_counts.get("cache", 0),
+            "live_capture_snapshot_count": snapshot_kind_counts.get("live_capture", 0),
+            "derived_snapshot_count": snapshot_kind_counts.get("derived", 0),
+            "unknown_snapshot_count": snapshot_kind_counts.get("unknown", 0),
+            "snapshot_checksum_coverage": snapshot_checksum_coverage,
         },
     }
 
@@ -424,6 +676,7 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
                             event["brief"] = enriched_brief
                             event["evaluation"] = evaluation
                             event["provenance"] = enriched_brief.get("provenance_summary")
+                            event["snapshot"] = enriched_brief.get("snapshot_summary")
                             _update_session_context(
                                 session_id=session_id,
                                 brief_payload=enriched_brief,
@@ -562,6 +815,7 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
                 completion["brief"] = enriched_brief
                 completion["evaluation"] = evaluation
                 completion["provenance"] = enriched_brief.get("provenance_summary")
+                completion["snapshot"] = enriched_brief.get("snapshot_summary")
                 _update_session_context(
                     session_id=session_id,
                     brief_payload=enriched_brief,

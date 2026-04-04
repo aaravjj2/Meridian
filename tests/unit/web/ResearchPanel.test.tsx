@@ -137,22 +137,50 @@ describe('ResearchPanel', () => {
               unknown: 0,
             },
           },
+          snapshot_summary: {
+            snapshot_count: 3,
+            snapshot_kind_counts: {
+              fixture: 3,
+              cache: 0,
+              live_capture: 0,
+              derived: 0,
+              unknown: 0,
+            },
+            cache_lineage_counts: {
+              fixture: 3,
+              cache: 0,
+              fresh_pull: 0,
+              derived: 0,
+              unknown: 0,
+            },
+            snapshot_checksum_coverage: 3,
+          },
           sources: brief.sources.map((source) => ({
             ...source,
             provenance: {
               source_ref: `${source.type}:${source.id}`,
               tool_name: source.type === 'market' ? 'prediction_market_fetch' : 'fred_fetch',
               mode: 'demo',
+              cache_lineage: 'fixture',
               observed_at: '2026-03-01T00:00:00Z',
               captured_at: '2026-04-02T00:00:00Z',
               freshness: 'aging',
               freshness_hours: 120,
               deterministic: true,
+              snapshot: {
+                snapshot_id: `snap-${source.id}`,
+                snapshot_kind: 'fixture',
+                dataset: `${source.type}:${source.id}`,
+                dataset_version: 'demo-fixture-v1',
+                generated_at: '2026-03-01T00:00:00Z',
+                checksum_sha256: `checksum-${source.id}`,
+                deterministic: true,
+              },
             },
           })),
         }}
         evaluation={{
-          version: 'phase-6',
+          version: 'phase-7',
           deterministic_signature: 'sig-123',
           passed: true,
           checks: [
@@ -172,8 +200,15 @@ describe('ResearchPanel', () => {
     )
 
     expect(screen.getByTestId('provenance-summary')).toBeInTheDocument()
+    expect(screen.getByTestId('snapshot-summary')).toBeInTheDocument()
+    expect(screen.getByTestId('snapshot-kind-fixture')).toHaveTextContent('Fixture: 3')
     expect(screen.getByTestId('evaluation-report')).toBeInTheDocument()
     expect(screen.getByTestId('evaluation-signature')).toHaveTextContent('sig-123')
     expect(screen.getByTestId('source-freshness-0')).toHaveTextContent('AGING')
+    expect(screen.getByTestId('source-snapshot-kind-badge-0')).toHaveTextContent('FIXTURE')
+
+    fireEvent.click(screen.getByTestId('source-item-0'))
+    expect(screen.getByTestId('source-snapshot-id-0')).toHaveTextContent('snap-T10Y2Y')
+    expect(screen.getByTestId('source-cache-lineage-0')).toHaveTextContent('fixture')
   })
 })

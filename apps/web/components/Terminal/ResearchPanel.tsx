@@ -34,6 +34,14 @@ function freshnessBadgeClass(freshness: string): string {
   return 'freshness-badge freshness-badge-unknown'
 }
 
+function snapshotKindBadgeClass(snapshotKind: string): string {
+  if (snapshotKind === 'fixture') return 'snapshot-badge snapshot-badge-fixture'
+  if (snapshotKind === 'cache') return 'snapshot-badge snapshot-badge-cache'
+  if (snapshotKind === 'live_capture') return 'snapshot-badge snapshot-badge-live'
+  if (snapshotKind === 'derived') return 'snapshot-badge snapshot-badge-derived'
+  return 'snapshot-badge snapshot-badge-unknown'
+}
+
 const SAMPLE_SERIES = [
   { date: '2025-11-01', value: -0.38 },
   { date: '2025-12-01', value: -0.35 },
@@ -91,10 +99,48 @@ type ClaimRecord = {
 function SourcePreview({ source, idx }: { source: SourceItem; idx: number }) {
   const preview = source.preview ?? {}
   const entries = Object.entries(preview).filter(([key]) => key !== 'points')
+  const snapshot = source.provenance?.snapshot ?? null
+  const cacheLineage = source.provenance?.cache_lineage ?? 'unknown'
+
+  const snapshotPanel = (
+    <div className="source-snapshot" data-testid={`source-snapshot-${idx}`}>
+      <div className="source-snapshot-row">
+        <span className="source-preview-key">snapshot kind</span>
+        <span className="source-preview-value" data-testid={`source-snapshot-kind-${idx}`}>
+          {snapshot?.snapshot_kind ?? 'unknown'}
+        </span>
+      </div>
+      <div className="source-snapshot-row">
+        <span className="source-preview-key">cache lineage</span>
+        <span className="source-preview-value" data-testid={`source-cache-lineage-${idx}`}>
+          {cacheLineage}
+        </span>
+      </div>
+      <div className="source-snapshot-row">
+        <span className="source-preview-key">snapshot id</span>
+        <span className="source-preview-value" data-testid={`source-snapshot-id-${idx}`}>
+          {snapshot?.snapshot_id ?? 'n/a'}
+        </span>
+      </div>
+      <div className="source-snapshot-row">
+        <span className="source-preview-key">dataset/version</span>
+        <span className="source-preview-value" data-testid={`source-snapshot-dataset-${idx}`}>
+          {snapshot?.dataset ?? 'n/a'} / {snapshot?.dataset_version ?? 'n/a'}
+        </span>
+      </div>
+      <div className="source-snapshot-row">
+        <span className="source-preview-key">checksum</span>
+        <span className="source-preview-value" data-testid={`source-snapshot-checksum-${idx}`}>
+          {snapshot?.checksum_sha256 ?? 'n/a'}
+        </span>
+      </div>
+    </div>
+  )
 
   if (source.type === 'fred') {
     return (
       <div className="source-preview" data-testid={`source-preview-${idx}`}>
+        {snapshotPanel}
         <div className="source-preview-grid">
           {entries.map(([key, value]) => (
             <div key={key} className="source-preview-kv">
@@ -110,6 +156,7 @@ function SourcePreview({ source, idx }: { source: SourceItem; idx: number }) {
 
   return (
     <div className="source-preview source-preview-generic" data-testid={`source-preview-${idx}`}>
+      {snapshotPanel}
       {entries.length === 0 ? <p>No preview metadata available.</p> : null}
       {entries.map(([key, value]) => (
         <div key={key} className="source-preview-kv">
@@ -259,6 +306,16 @@ export default function ResearchPanel({
     provenanceSummary && typeof provenanceSummary.freshness_counts === 'object'
       ? (provenanceSummary.freshness_counts as Record<string, unknown>)
       : null
+  const snapshotSummary =
+    brief.snapshot_summary && typeof brief.snapshot_summary === 'object' ? brief.snapshot_summary : null
+  const snapshotKindCounts =
+    snapshotSummary && typeof snapshotSummary.snapshot_kind_counts === 'object'
+      ? (snapshotSummary.snapshot_kind_counts as Record<string, unknown>)
+      : null
+  const cacheLineageCounts =
+    snapshotSummary && typeof snapshotSummary.cache_lineage_counts === 'object'
+      ? (snapshotSummary.cache_lineage_counts as Record<string, unknown>)
+      : null
 
   return (
     <div className="brief-complete" data-testid="brief-complete">
@@ -377,6 +434,32 @@ export default function ResearchPanel({
         </section>
       ) : null}
 
+      {snapshotSummary ? (
+        <section className="brief-section" data-testid="snapshot-summary">
+          <span className="block-label">SNAPSHOTS</span>
+          <p data-testid="snapshot-count">Snapshots tracked: {String(snapshotSummary.snapshot_count ?? brief.sources.length)}</p>
+          {snapshotKindCounts ? (
+            <div className="provenance-freshness-grid" data-testid="snapshot-kind-grid">
+              <span data-testid="snapshot-kind-fixture">Fixture: {String(snapshotKindCounts.fixture ?? 0)}</span>
+              <span data-testid="snapshot-kind-cache">Cache: {String(snapshotKindCounts.cache ?? 0)}</span>
+              <span data-testid="snapshot-kind-live">Live: {String(snapshotKindCounts.live_capture ?? 0)}</span>
+              <span data-testid="snapshot-kind-derived">Derived: {String(snapshotKindCounts.derived ?? 0)}</span>
+            </div>
+          ) : null}
+          {cacheLineageCounts ? (
+            <div className="provenance-freshness-grid" data-testid="snapshot-lineage-grid">
+              <span data-testid="snapshot-lineage-fixture">Fixture lineage: {String(cacheLineageCounts.fixture ?? 0)}</span>
+              <span data-testid="snapshot-lineage-cache">Cache lineage: {String(cacheLineageCounts.cache ?? 0)}</span>
+              <span data-testid="snapshot-lineage-fresh">Fresh pulls: {String(cacheLineageCounts.fresh_pull ?? 0)}</span>
+              <span data-testid="snapshot-lineage-derived">Derived lineage: {String(cacheLineageCounts.derived ?? 0)}</span>
+            </div>
+          ) : null}
+          <p data-testid="snapshot-checksum-coverage">
+            Snapshot checksum coverage: {String(snapshotSummary.snapshot_checksum_coverage ?? 0)}
+          </p>
+        </section>
+      ) : null}
+
       {evaluation ? (
         <section className="brief-section" data-testid="evaluation-report">
           <span className="block-label">EVALUATION</span>
@@ -479,6 +562,12 @@ export default function ResearchPanel({
                   data-testid={`source-freshness-${idx}`}
                 >
                   {(source.provenance?.freshness ?? 'unknown').toUpperCase()}
+                </span>
+                <span
+                  className={snapshotKindBadgeClass(source.provenance?.snapshot?.snapshot_kind ?? 'unknown')}
+                  data-testid={`source-snapshot-kind-badge-${idx}`}
+                >
+                  {(source.provenance?.snapshot?.snapshot_kind ?? 'unknown').toUpperCase()}
                 </span>
               </button>
               {source.claim_refs && source.claim_refs.length > 0 ? (

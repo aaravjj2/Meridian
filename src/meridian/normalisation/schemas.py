@@ -59,15 +59,29 @@ class RiskPoint(ClaimBase):
     risk: str
 
 
+class SnapshotProvenance(BaseModel):
+    snapshot_id: str
+    snapshot_kind: Literal["fixture", "cache", "live_capture", "derived", "unknown"] = "unknown"
+    dataset: str
+    dataset_version: str | None = None
+    generated_at: str | None = None
+    cached_at: str | None = None
+    fetched_at: str | None = None
+    checksum_sha256: str | None = None
+    deterministic: bool = False
+
+
 class SourceProvenance(BaseModel):
     source_ref: str
     tool_name: str
     mode: Literal["demo", "live"]
+    cache_lineage: Literal["fixture", "cache", "fresh_pull", "derived", "unknown"] = "unknown"
     observed_at: str | None = None
     captured_at: str
     freshness: Literal["fresh", "aging", "stale", "unknown"] = "unknown"
     freshness_hours: float | None = None
     deterministic: bool = False
+    snapshot: SnapshotProvenance | None = None
 
 
 class SourceRef(BaseModel):
@@ -87,7 +101,7 @@ class ResearchEvaluationCheck(BaseModel):
 
 
 class ResearchEvaluationReport(BaseModel):
-    version: str = "phase-6"
+    version: str = "phase-7"
     deterministic_signature: str
     passed: bool
     checks: list[ResearchEvaluationCheck] = Field(default_factory=list)
@@ -125,6 +139,7 @@ class ResearchBrief(BaseModel):
     sources: list[SourceRef]
     signal_conflicts: list[SignalConflict] = Field(default_factory=list)
     provenance_summary: dict[str, Any] | None = None
+    snapshot_summary: dict[str, Any] | None = None
     created_at: str
     trace_steps: list[int] = Field(default_factory=list)
 

@@ -16,6 +16,7 @@ export type TraceEvent = {
   message?: string
   evaluation?: ResearchEvaluationReport
   provenance?: Record<string, unknown>
+  snapshot?: Record<string, unknown>
   content?: {
     step?: number
     tools_used?: string[] | string
@@ -30,15 +31,29 @@ export type SourcePreview = {
   [key: string]: unknown
 }
 
+export type SnapshotProvenance = {
+  snapshot_id: string
+  snapshot_kind: 'fixture' | 'cache' | 'live_capture' | 'derived' | 'unknown'
+  dataset: string
+  dataset_version?: string | null
+  generated_at?: string | null
+  cached_at?: string | null
+  fetched_at?: string | null
+  checksum_sha256?: string | null
+  deterministic: boolean
+}
+
 export type SourceProvenance = {
   source_ref: string
   tool_name: string
   mode: 'demo' | 'live'
+  cache_lineage: 'fixture' | 'cache' | 'fresh_pull' | 'derived' | 'unknown'
   observed_at?: string | null
   captured_at: string
   freshness: 'fresh' | 'aging' | 'stale' | 'unknown'
   freshness_hours?: number | null
   deterministic: boolean
+  snapshot?: SnapshotProvenance | null
 }
 
 export type ResearchEvaluationCheck = {
@@ -105,6 +120,7 @@ export type ResearchBrief = {
   sources: SourceItem[]
   signal_conflicts?: SignalConflict[]
   provenance_summary?: Record<string, unknown> | null
+  snapshot_summary?: Record<string, unknown> | null
   created_at: string
   trace_steps: number[]
 }
@@ -124,6 +140,8 @@ export type SavedResearchSessionSummary = {
   canonical_signature: string
   evaluation_passed?: boolean | null
   evaluation_signature?: string | null
+  snapshot_kind_counts?: Record<string, number> | null
+  snapshot_signature?: string | null
 }
 
 export type SavedResearchSession = SavedResearchSessionSummary & {
@@ -149,6 +167,33 @@ export type SessionComparison = {
   }>
   claim_diffs: Record<string, string[]>
   source_diffs: Record<string, string[]>
+  snapshot_drift: {
+    left_snapshot_signature: string
+    right_snapshot_signature: string
+    snapshot_signature_changed: boolean
+    left_evaluation_signature?: string | null
+    right_evaluation_signature?: string | null
+    evaluation_signature_changed: boolean
+    source_set_changed: boolean
+    source_set_delta_count: number
+    sources_added: string[]
+    sources_removed: string[]
+    snapshot_ids_changed: Array<{
+      source_ref: string
+      left_snapshot_id?: string | null
+      right_snapshot_id?: string | null
+      left_snapshot_kind?: string | null
+      right_snapshot_kind?: string | null
+    }>
+    freshness_changed: Array<{
+      source_ref: string
+      left_freshness?: string | null
+      right_freshness?: string | null
+      left_freshness_hours?: number | null
+      right_freshness_hours?: number | null
+    }>
+    drift_signature: string
+  }
   trace_diffs: {
     left_event_count: number
     right_event_count: number
@@ -165,6 +210,11 @@ export type SessionComparison = {
     thesis_changed: boolean
     confidence_changed: boolean
     signature_match: boolean
+    snapshot_id_changes: number
+    freshness_changes: number
+    source_set_changed: boolean
+    evaluation_signature_changed: boolean
+    snapshot_drift_signature: string
   }
 }
 
@@ -179,9 +229,14 @@ export type SessionIntegrityReport = {
   evidence_state_valid: boolean
   provenance_complete: boolean
   freshness_valid: boolean
+  snapshot_complete: boolean
+  snapshot_consistent: boolean
+  snapshot_summary_present: boolean
+  snapshot_checksum_complete: boolean
   evaluation_present: boolean
   evaluation_valid: boolean
   evaluation_signature?: string | null
+  bundle_snapshot_signature?: string | null
   issues: string[]
   checked_at: string
   provenance: Record<string, unknown>

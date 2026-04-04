@@ -106,10 +106,19 @@ Brief payload additions in complete events:
 - bull_case[].claim_id, bear_case[].claim_id, key_risks[].claim_id: stable claim identifiers
 - sources[].claim_refs: array of claim_id links for claim-to-source navigation
 - sources[].preview: structured preview metadata keyed by source type
-- sources[].provenance: source-level provenance metadata including freshness classification
+- sources[].provenance: source-level provenance metadata including freshness, cache_lineage, and snapshot metadata
 - provenance_summary: aggregate freshness/source-count metadata
+- snapshot_summary: snapshot-level provenance rollup (snapshot kinds, cache lineage, checksum coverage)
 - signal_conflicts[]: contradiction metadata with conflict_id, title, summary, severity, claim_refs, source_refs
 - evaluation: deterministic quality checks with stable signature and metrics
+
+Snapshot and cache-lineage semantics:
+
+- `snapshot.snapshot_kind=fixture`: deterministic fixture-backed data source
+- `snapshot.snapshot_kind=cache`: replay from cached snapshot state
+- `snapshot.snapshot_kind=live_capture`: fresher fetch path capture
+- `snapshot.snapshot_kind=derived`: computed/derived snapshot
+- `cache_lineage`: normalized lineage classification (`fixture|cache|fresh_pull|derived|unknown`)
 
 Semantics:
 
@@ -230,8 +239,17 @@ Response includes:
 - `metadata_diffs`
 - `claim_diffs`
 - `source_diffs`
+- `snapshot_drift`
 - `trace_diffs`
 - `summary`
+
+Wave 8 snapshot drift fields:
+
+- `snapshot_drift.snapshot_ids_changed`: list of source refs where snapshot ids diverged
+- `snapshot_drift.freshness_changed`: list of source refs where freshness class/hours diverged
+- `snapshot_drift.source_set_changed`: whether source membership changed between sessions
+- `snapshot_drift.evaluation_signature_changed`: whether deterministic evaluation signature changed
+- `snapshot_drift.drift_signature`: deterministic hash of the snapshot-drift payload
 
 ### GET /api/v1/research/sessions/integrity
 
@@ -244,13 +262,18 @@ Query parameters:
 
 Response includes per-session `signature_valid`, trace ordering checks, evidence-state validity, and issue lists.
 
-Phase 6 integrity fields:
+Phase 7 integrity fields:
 
 - `provenance_complete`
 - `freshness_valid`
+- `snapshot_complete`
+- `snapshot_consistent`
+- `snapshot_summary_present`
+- `snapshot_checksum_complete`
 - `evaluation_present`
 - `evaluation_valid`
 - `evaluation_signature`
+- `bundle_snapshot_signature`
 
 ### GET /api/v1/research/sessions/{saved_id}/integrity
 
@@ -276,7 +299,8 @@ Exports a self-contained bundle JSON payload with:
 - full saved session record
 - integrity report (recomputed signature + structural checks)
 - evaluation report (deterministic signature + checks)
-- provenance metadata (`source`, `app_version`, `model`, `mode`, `freshness_counts`, `evaluation_signature`)
+- snapshot provenance metadata (`summary`, `sources`, `signature_sha256`)
+- provenance metadata (`source`, `app_version`, `model`, `mode`, `freshness_counts`, `snapshot_kind_counts`, `cache_lineage_counts`, `snapshot_signature`, `evaluation_signature`)
 
 ### GET /api/v1/screener
 

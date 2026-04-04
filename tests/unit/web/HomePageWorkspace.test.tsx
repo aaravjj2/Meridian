@@ -70,6 +70,33 @@ const briefFixture = {
       source_refs: ['fred:T10Y2Y'],
     },
   ],
+  provenance_summary: {
+    source_count: 3,
+    freshness_counts: {
+      fresh: 1,
+      aging: 2,
+      stale: 0,
+      unknown: 0,
+    },
+  },
+  snapshot_summary: {
+    snapshot_count: 3,
+    snapshot_kind_counts: {
+      fixture: 3,
+      cache: 0,
+      live_capture: 0,
+      derived: 0,
+      unknown: 0,
+    },
+    cache_lineage_counts: {
+      fixture: 3,
+      cache: 0,
+      fresh_pull: 0,
+      derived: 0,
+      unknown: 0,
+    },
+    snapshot_checksum_coverage: 3,
+  },
   created_at: '2026-04-03T10:00:00Z',
   trace_steps: [0, 1, 2],
 } as const
@@ -89,6 +116,14 @@ const savedSummary = {
   canonical_signature: 'abc123',
   evaluation_passed: true,
   evaluation_signature: 'eval-abc123',
+  snapshot_kind_counts: {
+    fixture: 3,
+    cache: 0,
+    live_capture: 0,
+    derived: 0,
+    unknown: 0,
+  },
+  snapshot_signature: 'snap-sig-abc123',
 } as const
 
 const savedSummaryTwo = {
@@ -106,6 +141,14 @@ const savedSummaryTwo = {
   canonical_signature: 'def456',
   evaluation_passed: true,
   evaluation_signature: 'eval-def456',
+  snapshot_kind_counts: {
+    fixture: 3,
+    cache: 0,
+    live_capture: 0,
+    derived: 0,
+    unknown: 0,
+  },
+  snapshot_signature: 'snap-sig-def456',
 } as const
 
 const savedRecord = {
@@ -134,7 +177,7 @@ const savedRecord = {
     expanded_source_id: 'fred:T10Y2Y',
   },
   evaluation: {
-    version: 'phase-6',
+    version: 'phase-7',
     deterministic_signature: 'eval-abc123',
     passed: true,
     checks: [
@@ -193,7 +236,7 @@ const savedRecordTwo = {
     expanded_source_id: 'fred:CPIAUCSL',
   },
   evaluation: {
-    version: 'phase-6',
+    version: 'phase-7',
     deterministic_signature: 'eval-def456',
     passed: true,
     checks: [
@@ -369,6 +412,37 @@ describe('HomePage workspace persistence', () => {
             sources_added: ['fred:CPIAUCSL'],
             sources_removed: ['fred:T10Y2Y'],
           },
+          snapshot_drift: {
+            left_snapshot_signature: 'snap-sig-abc123',
+            right_snapshot_signature: 'snap-sig-def456',
+            snapshot_signature_changed: true,
+            left_evaluation_signature: 'eval-abc123',
+            right_evaluation_signature: 'eval-def456',
+            evaluation_signature_changed: true,
+            source_set_changed: true,
+            source_set_delta_count: 2,
+            sources_added: ['fred:CPIAUCSL'],
+            sources_removed: ['fred:T10Y2Y'],
+            snapshot_ids_changed: [
+              {
+                source_ref: 'fred:T10Y2Y',
+                left_snapshot_id: 'snap-left-123',
+                right_snapshot_id: 'snap-right-987',
+                left_snapshot_kind: 'fixture',
+                right_snapshot_kind: 'cache',
+              },
+            ],
+            freshness_changed: [
+              {
+                source_ref: 'fred:T10Y2Y',
+                left_freshness: 'fresh',
+                right_freshness: 'aging',
+                left_freshness_hours: 12,
+                right_freshness_hours: 72,
+              },
+            ],
+            drift_signature: 'drift-sig-123',
+          },
           trace_diffs: {
             left_event_count: 2,
             right_event_count: 2,
@@ -385,6 +459,11 @@ describe('HomePage workspace persistence', () => {
             thesis_changed: true,
             confidence_changed: true,
             signature_match: false,
+            snapshot_id_changes: 1,
+            freshness_changes: 1,
+            source_set_changed: true,
+            evaluation_signature_changed: true,
+            snapshot_drift_signature: 'drift-sig-123',
           },
         })
       ),
@@ -400,9 +479,14 @@ describe('HomePage workspace persistence', () => {
           evidence_state_valid: true,
           provenance_complete: true,
           freshness_valid: true,
+          snapshot_complete: true,
+          snapshot_consistent: true,
+          snapshot_summary_present: true,
+          snapshot_checksum_complete: true,
           evaluation_present: true,
           evaluation_valid: true,
           evaluation_signature: 'eval-abc123',
+          bundle_snapshot_signature: 'snap-sig-abc123',
           issues: [],
           checked_at: '2026-04-03T10:10:00Z',
           provenance: {},
@@ -422,9 +506,14 @@ describe('HomePage workspace persistence', () => {
               evidence_state_valid: true,
               provenance_complete: true,
               freshness_valid: true,
+              snapshot_complete: true,
+              snapshot_consistent: true,
+              snapshot_summary_present: true,
+              snapshot_checksum_complete: true,
               evaluation_present: true,
               evaluation_valid: true,
               evaluation_signature: 'eval-abc123',
+              bundle_snapshot_signature: 'snap-sig-abc123',
               issues: [],
               checked_at: '2026-04-03T10:10:00Z',
               provenance: {},
@@ -440,9 +529,14 @@ describe('HomePage workspace persistence', () => {
               evidence_state_valid: true,
               provenance_complete: true,
               freshness_valid: true,
+              snapshot_complete: true,
+              snapshot_consistent: true,
+              snapshot_summary_present: true,
+              snapshot_checksum_complete: true,
               evaluation_present: true,
               evaluation_valid: true,
               evaluation_signature: 'eval-def456',
+              bundle_snapshot_signature: 'snap-sig-def456',
               issues: [],
               checked_at: '2026-04-03T10:10:00Z',
               provenance: {},
@@ -464,6 +558,7 @@ describe('HomePage workspace persistence', () => {
     render(<HomePage />)
 
     expect(await screen.findByTestId('workspace-item-0')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-snapshot-0')).toBeInTheDocument()
 
     fireEvent.change(screen.getByTestId('workspace-compare-left'), {
       target: { value: savedSummary.id },
@@ -475,10 +570,16 @@ describe('HomePage workspace persistence', () => {
 
     expect(await screen.findByTestId('workspace-compare-result')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-compare-signature')).toHaveTextContent('different')
+    expect(screen.getByTestId('workspace-compare-drift-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-compare-drift-evaluation-signature')).toHaveTextContent('yes')
+    expect(screen.getByTestId('workspace-compare-drift-source-set')).toHaveTextContent('yes')
+    expect(screen.getByTestId('workspace-compare-snapshot-id-change-0')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-compare-freshness-change-0')).toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('workspace-verify-0'))
     expect(await screen.findByTestId('workspace-integrity-report')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-integrity-provenance')).toHaveTextContent('complete')
+    expect(screen.getByTestId('workspace-integrity-snapshot')).toHaveTextContent('complete + consistent')
     expect(screen.getByTestId('workspace-integrity-evaluation')).toHaveTextContent('valid')
 
     fireEvent.click(screen.getByTestId('workspace-integrity-run-all'))

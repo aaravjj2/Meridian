@@ -259,6 +259,45 @@ export default function WorkspacePanel({
                 ? comparisonResult.summary.changed_fields.join(', ')
                 : 'none'}
             </p>
+            <div className="workspace-compare-drift" data-testid="workspace-compare-drift-panel">
+              <p data-testid="workspace-compare-drift-signature">
+                Drift signature: {comparisonResult.snapshot_drift.drift_signature}
+              </p>
+              <p data-testid="workspace-compare-drift-snapshot-id-count">
+                Snapshot IDs changed: {comparisonResult.snapshot_drift.snapshot_ids_changed.length}
+              </p>
+              <p data-testid="workspace-compare-drift-freshness-count">
+                Freshness changed: {comparisonResult.snapshot_drift.freshness_changed.length}
+              </p>
+              <p data-testid="workspace-compare-drift-source-set">
+                Source set changed: {comparisonResult.snapshot_drift.source_set_changed ? 'yes' : 'no'}
+              </p>
+              <p data-testid="workspace-compare-drift-evaluation-signature">
+                Evaluation signature changed: {comparisonResult.snapshot_drift.evaluation_signature_changed ? 'yes' : 'no'}
+              </p>
+              {comparisonResult.snapshot_drift.snapshot_ids_changed.length > 0 ? (
+                <ul className="workspace-compare-drift-list" data-testid="workspace-compare-drift-snapshot-id-list">
+                  {comparisonResult.snapshot_drift.snapshot_ids_changed.slice(0, 4).map((item, idx) => (
+                    <li key={`${item.source_ref}-snapshot-${idx}`} data-testid={`workspace-compare-snapshot-id-change-${idx}`}>
+                      {item.source_ref}: {item.left_snapshot_id ?? 'none'} {'->'} {item.right_snapshot_id ?? 'none'}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p data-testid="workspace-compare-snapshot-id-change-none">No snapshot id drift.</p>
+              )}
+              {comparisonResult.snapshot_drift.freshness_changed.length > 0 ? (
+                <ul className="workspace-compare-drift-list" data-testid="workspace-compare-drift-freshness-list">
+                  {comparisonResult.snapshot_drift.freshness_changed.slice(0, 4).map((item, idx) => (
+                    <li key={`${item.source_ref}-freshness-${idx}`} data-testid={`workspace-compare-freshness-change-${idx}`}>
+                      {item.source_ref}: {item.left_freshness ?? 'unknown'} {'->'} {item.right_freshness ?? 'unknown'}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p data-testid="workspace-compare-freshness-change-none">No freshness drift.</p>
+              )}
+            </div>
           </div>
         ) : null}
       </div>
@@ -281,6 +320,20 @@ export default function WorkspacePanel({
             <p data-testid="workspace-integrity-freshness">
               Freshness: {integrityReport.freshness_valid ? 'resolved' : 'unknown present'}
             </p>
+            <p data-testid="workspace-integrity-snapshot">
+              Snapshot provenance:{' '}
+              {integrityReport.snapshot_complete
+                ? integrityReport.snapshot_consistent
+                  ? 'complete + consistent'
+                  : 'complete but inconsistent'
+                : 'missing metadata'}
+            </p>
+            <p data-testid="workspace-integrity-snapshot-summary">
+              Snapshot summary: {integrityReport.snapshot_summary_present ? 'present' : 'missing'}
+            </p>
+            <p data-testid="workspace-integrity-snapshot-checksum">
+              Snapshot checksum: {integrityReport.snapshot_checksum_complete ? 'complete' : 'incomplete'}
+            </p>
             <p data-testid="workspace-integrity-evaluation">
               Evaluation:{' '}
               {integrityReport.evaluation_present
@@ -289,6 +342,11 @@ export default function WorkspacePanel({
                   : 'signature mismatch'
                 : 'missing'}
             </p>
+            {integrityReport.bundle_snapshot_signature ? (
+              <p data-testid="workspace-integrity-snapshot-signature">
+                Snapshot signature: {integrityReport.bundle_snapshot_signature}
+              </p>
+            ) : null}
             <p>Issues: {integrityReport.issues.length === 0 ? 'none' : integrityReport.issues.join('; ')}</p>
           </div>
         ) : null}
@@ -340,6 +398,20 @@ export default function WorkspacePanel({
                     data-testid={`workspace-evaluation-${idx}`}
                   >
                     Eval {session.evaluation_passed ? 'PASS' : 'FAIL'}
+                  </p>
+                ) : null}
+                {session.snapshot_kind_counts ? (
+                  <p className="workspace-item-snapshot" data-testid={`workspace-snapshot-${idx}`}>
+                    Snapshots f/c/l/d/u: {session.snapshot_kind_counts.fixture ?? 0}/
+                    {session.snapshot_kind_counts.cache ?? 0}/
+                    {session.snapshot_kind_counts.live_capture ?? 0}/
+                    {session.snapshot_kind_counts.derived ?? 0}/
+                    {session.snapshot_kind_counts.unknown ?? 0}
+                  </p>
+                ) : null}
+                {session.snapshot_signature ? (
+                  <p className="workspace-item-snapshot-signature" data-testid={`workspace-snapshot-signature-${idx}`}>
+                    Snapshot sig: {session.snapshot_signature}
                   </p>
                 ) : null}
                 {session.archived ? (

@@ -15,6 +15,7 @@ from meridian.normalisation.schemas import (
     ResearchBrief,
     ResearchEvaluationCheck,
     ResearchEvaluationReport,
+    SnapshotProvenance,
     SourceProvenance,
 )
 from meridian.settings import ROOT_DIR
@@ -44,6 +45,37 @@ def _freshness_from_hours(hours: float | None) -> Literal["fresh", "aging", "sta
     if hours <= 24 * 180:
         return "aging"
     return "stale"
+
+
+def _normalize_snapshot_kind(value: Any) -> Literal["fixture", "cache", "live_capture", "derived", "unknown"]:
+    candidate = str(value or "").strip().lower()
+    if candidate in {"fixture", "cache", "live_capture", "derived", "unknown"}:
+        return candidate
+    return "unknown"
+
+
+def _cache_lineage_from_snapshot_kind(
+    snapshot_kind: str,
+) -> Literal["fixture", "cache", "fresh_pull", "derived", "unknown"]:
+    if snapshot_kind == "fixture":
+        return "fixture"
+    if snapshot_kind == "cache":
+        return "cache"
+    if snapshot_kind == "live_capture":
+        return "fresh_pull"
+    if snapshot_kind == "derived":
+        return "derived"
+    return "unknown"
+
+
+def _preview_timestamp(preview: dict[str, Any], keys: list[str]) -> str | None:
+    for key in keys:
+        raw = preview.get(key)
+        if isinstance(raw, str) and raw.strip():
+            if "T" in raw:
+                return raw
+            return f"{raw}T00:00:00Z"
+    return None
 
 
 def _default_store_dir() -> Path:
@@ -142,6 +174,40 @@ class SavedResearchSessionSummary(BaseModel):
     canonical_signature: str
     evaluation_passed: bool | None = None
     evaluation_signature: str | None = None
+    snapshot_kind_counts: dict[str, int] | None = None
+    snapshot_signature: str | None = None
+
+
+class SnapshotIdDrift(BaseModel):
+    source_ref: str
+    left_snapshot_id: str | None = None
+    right_snapshot_id: str | None = None
+    left_snapshot_kind: str | None = None
+    right_snapshot_kind: str | None = None
+
+
+class FreshnessDrift(BaseModel):
+    source_ref: str
+    left_freshness: str | None = None
+    right_freshness: str | None = None
+    left_freshness_hours: float | None = None
+    right_freshness_hours: float | None = None
+
+
+class SnapshotDriftReport(BaseModel):
+    left_snapshot_signature: str
+    right_snapshot_signature: str
+    snapshot_signature_changed: bool
+    left_evaluation_signature: str | None = None
+    right_evaluation_signature: str | None = None
+    evaluation_signature_changed: bool
+    source_set_changed: bool
+    source_set_delta_count: int
+    sources_added: list[str] = Field(default_factory=list)
+    sources_removed: list[str] = Field(default_factory=list)
+    snapshot_ids_changed: list[SnapshotIdDrift] = Field(default_factory=list)
+    freshness_changed: list[FreshnessDrift] = Field(default_factory=list)
+    drift_signature: str
 
 
 class SessionComparison(BaseModel):
@@ -151,6 +217,7 @@ class SessionComparison(BaseModel):
     metadata_diffs: list[dict[str, Any]] = Field(default_factory=list)
     claim_diffs: dict[str, list[str]] = Field(default_factory=dict)
     source_diffs: dict[str, list[str]] = Field(default_factory=dict)
+    snapshot_drift: SnapshotDriftReport
     trace_diffs: dict[str, Any] = Field(default_factory=dict)
     summary: dict[str, Any] = Field(default_factory=dict)
 
@@ -166,9 +233,14 @@ class SessionIntegrityReport(BaseModel):
     evidence_state_valid: bool
     provenance_complete: bool
     freshness_valid: bool
+    snapshot_complete: bool
+    snapshot_consistent: bool
+    snapshot_summary_present: bool
+    snapshot_checksum_complete: bool
     evaluation_present: bool
     evaluation_valid: bool
     evaluation_signature: str | None = None
+    bundle_snapshot_signature: str | None = None
     issues: list[str] = Field(default_factory=list)
     checked_at: str
     provenance: dict[str, Any] = Field(default_factory=dict)
@@ -270,6 +342,83 @@ class ResearchSessionStore:
         }
         return mapping.get(source_type, "unknown")
 
+    def _snapshot_kind_for_source(
+        self,
+        source: Any,
+        mode: Literal["demo", "live"],
+        existing_snapshot: dict[str, Any],
+    ) -> Literal["fixture", "cache", "live_capture", "derived", "unknown"]:
+        explicit = _normalize_snapshot_kind(existing_snapshot.get("snapshot_kind"))
+        if explicit != "unknown":
+            return explicit
+
+        preview = source.preview or {}
+        hinted = _normalize_snapshot_kind(preview.get("snapshot_kind") or preview.get("snapshot_source"))
+        if hinted != "unknown":
+            return hinted
+
+        if mode == "demo":
+            return "fixture"
+
+        if any(
+            key in preview
+            for key in ["cached_at", "cache_timestamp", "cache_key", "cache_hit", "cache_snapshot_id"]
+        ):
+            return "cache"
+        if any(key in preview for key in ["derived_from", "computed_from", "calculation", "model_version"]):
+            return "derived"
+        if mode == "live":
+            return "live_capture"
+        return "unknown"
+
+    def _snapshot_dataset_label(self, source: Any) -> str:
+        preview = source.preview or {}
+        if source.type == "fred":
+            return f"fred:{str(preview.get('series_id') or source.id)}"
+        if source.type == "market":
+            platform = str(preview.get("platform") or "market")
+            return f"{platform}:{source.id}"
+        if source.type == "edgar":
+            return f"edgar:{str(preview.get('cik') or source.id)}"
+        if source.type == "news":
+            return f"news:{str(preview.get('topic') or source.id)}"
+        return f"{source.type}:{source.id}"
+
+    def _snapshot_projection(self, brief: ResearchBrief) -> list[dict[str, Any]]:
+        projection: list[dict[str, Any]] = []
+        for source in brief.sources:
+            source_ref = f"{source.type}:{source.id}"
+            snapshot = source.provenance.snapshot if source.provenance else None
+            projection.append(
+                {
+                    "source_ref": source_ref,
+                    "cache_lineage": source.provenance.cache_lineage if source.provenance else "unknown",
+                    "snapshot": snapshot.model_dump(exclude_none=True) if snapshot else None,
+                }
+            )
+        return projection
+
+    def _snapshot_signature(self, brief: ResearchBrief) -> str:
+        payload = {
+            "snapshot_summary": brief.snapshot_summary,
+            "sources": self._snapshot_projection(brief),
+        }
+        return self._hash_canonical_payload(payload)
+
+    def _source_snapshot_index(self, brief: ResearchBrief) -> dict[str, dict[str, Any]]:
+        index: dict[str, dict[str, Any]] = {}
+        for source in brief.sources:
+            source_ref = f"{source.type}:{source.id}"
+            provenance = source.provenance
+            snapshot = provenance.snapshot if provenance else None
+            index[source_ref] = {
+                "snapshot_id": snapshot.snapshot_id if snapshot else None,
+                "snapshot_kind": snapshot.snapshot_kind if snapshot else None,
+                "freshness": provenance.freshness if provenance else "unknown",
+                "freshness_hours": provenance.freshness_hours if provenance else None,
+            }
+        return index
+
     def _compute_freshness(self, observed_at: str | None, captured_at: str) -> tuple[str, float | None]:
         observed_dt = _parse_iso(observed_at)
         captured_dt = _parse_iso(captured_at)
@@ -283,11 +432,23 @@ class ResearchSessionStore:
         enriched = brief.model_copy(deep=True)
         captured_at = enriched.created_at or _iso_now()
         freshness_counts: Counter[str] = Counter()
+        snapshot_kind_counts: Counter[str] = Counter()
+        cache_lineage_counts: Counter[str] = Counter()
+        freshness_by_snapshot_kind: dict[str, Counter[str]] = {
+            "fixture": Counter(),
+            "cache": Counter(),
+            "live_capture": Counter(),
+            "derived": Counter(),
+            "unknown": Counter(),
+        }
         observed_candidates: list[datetime] = []
+        snapshot_checksum_coverage = 0
 
         for source in enriched.sources:
             source_ref = f"{source.type}:{source.id}"
+            preview = source.preview or {}
             existing = source.provenance.model_dump(exclude_none=True) if source.provenance else {}
+            existing_snapshot = existing.get("snapshot") if isinstance(existing.get("snapshot"), dict) else {}
             observed_at = str(existing.get("observed_at") or self._derive_observed_at(source) or captured_at)
             freshness, freshness_hours = self._compute_freshness(observed_at=observed_at, captured_at=captured_at)
             mode_value = str(existing.get("mode") or mode)
@@ -296,6 +457,58 @@ class ResearchSessionStore:
             freshness_value = str(existing.get("freshness") or freshness)
             if freshness_value not in {"fresh", "aging", "stale", "unknown"}:
                 freshness_value = freshness
+            snapshot_kind = self._snapshot_kind_for_source(
+                source=source,
+                mode=mode_value,
+                existing_snapshot=existing_snapshot,
+            )
+            cache_lineage = str(existing.get("cache_lineage") or _cache_lineage_from_snapshot_kind(snapshot_kind))
+            if cache_lineage not in {"fixture", "cache", "fresh_pull", "derived", "unknown"}:
+                cache_lineage = _cache_lineage_from_snapshot_kind(snapshot_kind)
+
+            dataset = str(existing_snapshot.get("dataset") or self._snapshot_dataset_label(source))
+            dataset_version = existing_snapshot.get("dataset_version") or preview.get("dataset_version")
+            if mode == "demo" and not dataset_version:
+                dataset_version = "demo-fixture-v1"
+
+            generated_at = existing_snapshot.get("generated_at") or _preview_timestamp(
+                preview,
+                ["generated_at", "snapshot_generated_at", "as_of", "last_updated", "updated_at", "filed_date"],
+            )
+            cached_at = existing_snapshot.get("cached_at") or _preview_timestamp(
+                preview,
+                ["cached_at", "cache_timestamp", "cache_as_of"],
+            )
+            fetched_at = existing_snapshot.get("fetched_at") or _preview_timestamp(
+                preview,
+                ["fetched_at", "retrieved_at"],
+            )
+
+            if snapshot_kind == "fixture":
+                generated_at = generated_at or observed_at
+            elif snapshot_kind == "cache":
+                cached_at = cached_at or observed_at
+            elif snapshot_kind == "live_capture":
+                fetched_at = fetched_at or captured_at
+            elif snapshot_kind == "derived":
+                generated_at = generated_at or captured_at
+
+            snapshot_signature_payload = {
+                "source_ref": source_ref,
+                "snapshot_kind": snapshot_kind,
+                "dataset": dataset,
+                "dataset_version": dataset_version,
+                "generated_at": generated_at,
+                "cached_at": cached_at,
+                "fetched_at": fetched_at,
+                "preview_kind": preview.get("kind"),
+                "mode": mode_value,
+            }
+            checksum_sha256 = str(
+                existing_snapshot.get("checksum_sha256") or self._hash_canonical_payload(snapshot_signature_payload)
+            )
+            snapshot_id = str(existing_snapshot.get("snapshot_id") or f"snap-{checksum_sha256[:12]}")
+            deterministic_snapshot = bool(existing_snapshot.get("deterministic", mode == "demo"))
 
             if observed_at:
                 parsed = _parse_iso(observed_at)
@@ -306,13 +519,30 @@ class ResearchSessionStore:
                 source_ref=source_ref,
                 tool_name=str(existing.get("tool_name") or self._source_tool_name(source.type)),
                 mode=mode_value,
+                cache_lineage=cache_lineage,
                 observed_at=observed_at,
                 captured_at=str(existing.get("captured_at") or captured_at),
                 freshness=freshness_value,
                 freshness_hours=existing.get("freshness_hours", freshness_hours),
                 deterministic=bool(existing.get("deterministic", mode == "demo")),
+                snapshot=SnapshotProvenance(
+                    snapshot_id=snapshot_id,
+                    snapshot_kind=snapshot_kind,
+                    dataset=dataset,
+                    dataset_version=(str(dataset_version) if dataset_version is not None else None),
+                    generated_at=(str(generated_at) if generated_at is not None else None),
+                    cached_at=(str(cached_at) if cached_at is not None else None),
+                    fetched_at=(str(fetched_at) if fetched_at is not None else None),
+                    checksum_sha256=checksum_sha256,
+                    deterministic=deterministic_snapshot,
+                ),
             )
             freshness_counts[source.provenance.freshness] += 1
+            snapshot_kind_counts[snapshot_kind] += 1
+            cache_lineage_counts[cache_lineage] += 1
+            freshness_by_snapshot_kind[snapshot_kind][source.provenance.freshness] += 1
+            if checksum_sha256:
+                snapshot_checksum_coverage += 1
 
         oldest_observed_at = (
             min(observed_candidates).isoformat().replace("+00:00", "Z") if observed_candidates else None
@@ -329,6 +559,36 @@ class ResearchSessionStore:
                 "unknown": freshness_counts.get("unknown", 0),
             },
             "oldest_observed_at": oldest_observed_at,
+        }
+        enriched.snapshot_summary = {
+            "captured_at": captured_at,
+            "mode": mode,
+            "deterministic": mode == "demo",
+            "snapshot_count": len(enriched.sources),
+            "snapshot_kind_counts": {
+                "fixture": snapshot_kind_counts.get("fixture", 0),
+                "cache": snapshot_kind_counts.get("cache", 0),
+                "live_capture": snapshot_kind_counts.get("live_capture", 0),
+                "derived": snapshot_kind_counts.get("derived", 0),
+                "unknown": snapshot_kind_counts.get("unknown", 0),
+            },
+            "cache_lineage_counts": {
+                "fixture": cache_lineage_counts.get("fixture", 0),
+                "cache": cache_lineage_counts.get("cache", 0),
+                "fresh_pull": cache_lineage_counts.get("fresh_pull", 0),
+                "derived": cache_lineage_counts.get("derived", 0),
+                "unknown": cache_lineage_counts.get("unknown", 0),
+            },
+            "freshness_by_snapshot_kind": {
+                kind: {
+                    "fresh": counters.get("fresh", 0),
+                    "aging": counters.get("aging", 0),
+                    "stale": counters.get("stale", 0),
+                    "unknown": counters.get("unknown", 0),
+                }
+                for kind, counters in freshness_by_snapshot_kind.items()
+            },
+            "snapshot_checksum_coverage": snapshot_checksum_coverage,
         }
         return enriched
 
@@ -377,6 +637,59 @@ class ResearchSessionStore:
             for source in brief.sources
             if source.provenance is not None and source.provenance.deterministic
         )
+        snapshot_records = [
+            source.provenance.snapshot
+            for source in brief.sources
+            if source.provenance is not None
+        ]
+        snapshot_kind_counts: Counter[str] = Counter(
+            snapshot.snapshot_kind
+            for snapshot in snapshot_records
+            if snapshot is not None
+        )
+        snapshot_complete = all(
+            snapshot is not None
+            and bool(snapshot.snapshot_id.strip())
+            and bool(snapshot.dataset.strip())
+            and snapshot.snapshot_kind != "unknown"
+            for snapshot in snapshot_records
+        )
+        snapshot_consistent = all(
+            source.provenance is not None
+            and source.provenance.snapshot is not None
+            and (
+                source.provenance.mode != "demo"
+                or source.provenance.snapshot.snapshot_kind in {"fixture", "derived"}
+            )
+            for source in brief.sources
+        )
+        snapshot_summary = brief.snapshot_summary if isinstance(brief.snapshot_summary, dict) else {}
+        snapshot_summary_present = bool(snapshot_summary)
+        cache_lineage_counts = (
+            snapshot_summary.get("cache_lineage_counts")
+            if isinstance(snapshot_summary.get("cache_lineage_counts"), dict)
+            else {}
+        )
+        cache_lineage_visible = (
+            snapshot_summary_present
+            and isinstance(cache_lineage_counts, dict)
+            and sum(
+                int(cache_lineage_counts.get(key, 0))
+                for key in ["fixture", "cache", "fresh_pull", "derived", "unknown"]
+            )
+            == len(brief.sources)
+        )
+        snapshot_checksum_complete = all(
+            snapshot is not None and bool((snapshot.checksum_sha256 or "").strip())
+            for snapshot in snapshot_records
+        )
+        bundle_snapshot_ready = (
+            snapshot_complete
+            and snapshot_consistent
+            and cache_lineage_visible
+            and snapshot_summary_present
+            and snapshot_checksum_complete
+        )
 
         checks = [
             ResearchEvaluationCheck(
@@ -409,6 +722,37 @@ class ResearchSessionStore:
                 detail="Demo mode sources should all be deterministic.",
                 value=deterministic_sources,
             ),
+            ResearchEvaluationCheck(
+                check_id="snapshot_metadata_complete",
+                passed=snapshot_complete,
+                detail="Every source includes snapshot id, kind, and dataset metadata.",
+                value=len(snapshot_records),
+            ),
+            ResearchEvaluationCheck(
+                check_id="snapshot_source_consistency",
+                passed=snapshot_consistent,
+                detail="Snapshot labels are consistent with source mode and lineage semantics.",
+                value=len(brief.sources),
+            ),
+            ResearchEvaluationCheck(
+                check_id="cache_lineage_visibility",
+                passed=cache_lineage_visible,
+                detail="Snapshot summary exposes cache lineage coverage for all sources.",
+                value=sum(
+                    int(cache_lineage_counts.get(key, 0))
+                    for key in ["fixture", "cache", "fresh_pull", "derived", "unknown"]
+                ),
+            ),
+            ResearchEvaluationCheck(
+                check_id="bundle_snapshot_provenance_ready",
+                passed=bundle_snapshot_ready,
+                detail="Snapshot checksum coverage is complete for offline bundle auditing.",
+                value=sum(
+                    1
+                    for snapshot in snapshot_records
+                    if snapshot is not None and bool((snapshot.checksum_sha256 or "").strip())
+                ),
+            ),
         ]
 
         signature_payload = {
@@ -422,6 +766,21 @@ class ResearchSessionStore:
                 )
                 for source in brief.sources
             },
+            "source_snapshot_kind": {
+                f"{source.type}:{source.id}": (
+                    source.provenance.snapshot.snapshot_kind
+                    if source.provenance and source.provenance.snapshot
+                    else "unknown"
+                )
+                for source in brief.sources
+            },
+            "source_cache_lineage": {
+                f"{source.type}:{source.id}": (
+                    source.provenance.cache_lineage if source.provenance else "unknown"
+                )
+                for source in brief.sources
+            },
+            "snapshot_summary": brief.snapshot_summary,
             "trace_steps": trace_steps,
             "trace_types": [event.type for event in trace_events],
         }
@@ -434,6 +793,17 @@ class ResearchSessionStore:
             "stale_source_count": stale_count,
             "unknown_source_count": unknown_count,
             "deterministic_source_count": deterministic_sources,
+            "snapshot_count": len(snapshot_records),
+            "fixture_snapshot_count": snapshot_kind_counts.get("fixture", 0),
+            "cache_snapshot_count": snapshot_kind_counts.get("cache", 0),
+            "live_capture_snapshot_count": snapshot_kind_counts.get("live_capture", 0),
+            "derived_snapshot_count": snapshot_kind_counts.get("derived", 0),
+            "unknown_snapshot_count": snapshot_kind_counts.get("unknown", 0),
+            "snapshot_checksum_coverage": sum(
+                1
+                for snapshot in snapshot_records
+                if snapshot is not None and bool((snapshot.checksum_sha256 or "").strip())
+            ),
         }
 
         return ResearchEvaluationReport(
@@ -501,6 +871,16 @@ class ResearchSessionStore:
         return records
 
     def _build_summary(self, record: SavedResearchSession) -> SavedResearchSessionSummary:
+        snapshot_summary = (
+            record.brief.snapshot_summary
+            if isinstance(record.brief.snapshot_summary, dict)
+            else {}
+        )
+        snapshot_kind_counts = (
+            snapshot_summary.get("snapshot_kind_counts")
+            if isinstance(snapshot_summary.get("snapshot_kind_counts"), dict)
+            else None
+        )
         return SavedResearchSessionSummary(
             id=record.id,
             question=record.question,
@@ -516,6 +896,8 @@ class ResearchSessionStore:
             canonical_signature=record.canonical_signature,
             evaluation_passed=record.evaluation.passed if record.evaluation else None,
             evaluation_signature=record.evaluation.deterministic_signature if record.evaluation else None,
+            snapshot_kind_counts=snapshot_kind_counts,
+            snapshot_signature=self._snapshot_signature(record.brief),
         )
 
     def _matches_filters(
@@ -624,6 +1006,11 @@ class ResearchSessionStore:
         if left is None or right is None:
             return None
 
+        left_evaluation_signature = left.evaluation.deterministic_signature if left.evaluation else None
+        right_evaluation_signature = right.evaluation.deterministic_signature if right.evaluation else None
+        left_snapshot_signature = self._snapshot_signature(left.brief)
+        right_snapshot_signature = self._snapshot_signature(right.brief)
+
         metadata_candidates: list[tuple[str, Any, Any]] = [
             ("question", left.question, right.question),
             ("label", left.label, right.label),
@@ -633,8 +1020,13 @@ class ResearchSessionStore:
             ("archived", left.archived, right.archived),
             (
                 "evaluation_signature",
-                left.evaluation.deterministic_signature if left.evaluation else None,
-                right.evaluation.deterministic_signature if right.evaluation else None,
+                left_evaluation_signature,
+                right_evaluation_signature,
+            ),
+            (
+                "snapshot_signature",
+                left_snapshot_signature,
+                right_snapshot_signature,
             ),
         ]
         metadata_diffs = [
@@ -669,6 +1061,71 @@ class ResearchSessionStore:
             "sources_added": sorted(right_sources - left_sources),
             "sources_removed": sorted(left_sources - right_sources),
         }
+        source_set_delta_count = len(source_diffs["sources_added"]) + len(source_diffs["sources_removed"])
+
+        left_snapshot_index = self._source_snapshot_index(left.brief)
+        right_snapshot_index = self._source_snapshot_index(right.brief)
+        shared_source_refs = sorted(set(left_snapshot_index) & set(right_snapshot_index))
+
+        snapshot_ids_changed: list[SnapshotIdDrift] = []
+        freshness_changed: list[FreshnessDrift] = []
+        for source_ref in shared_source_refs:
+            left_state = left_snapshot_index[source_ref]
+            right_state = right_snapshot_index[source_ref]
+            if left_state["snapshot_id"] != right_state["snapshot_id"]:
+                snapshot_ids_changed.append(
+                    SnapshotIdDrift(
+                        source_ref=source_ref,
+                        left_snapshot_id=left_state["snapshot_id"],
+                        right_snapshot_id=right_state["snapshot_id"],
+                        left_snapshot_kind=left_state["snapshot_kind"],
+                        right_snapshot_kind=right_state["snapshot_kind"],
+                    )
+                )
+            if (
+                left_state["freshness"] != right_state["freshness"]
+                or left_state["freshness_hours"] != right_state["freshness_hours"]
+            ):
+                freshness_changed.append(
+                    FreshnessDrift(
+                        source_ref=source_ref,
+                        left_freshness=left_state["freshness"],
+                        right_freshness=right_state["freshness"],
+                        left_freshness_hours=left_state["freshness_hours"],
+                        right_freshness_hours=right_state["freshness_hours"],
+                    )
+                )
+
+        snapshot_drift_payload = {
+            "left_snapshot_signature": left_snapshot_signature,
+            "right_snapshot_signature": right_snapshot_signature,
+            "snapshot_signature_changed": left_snapshot_signature != right_snapshot_signature,
+            "left_evaluation_signature": left_evaluation_signature,
+            "right_evaluation_signature": right_evaluation_signature,
+            "evaluation_signature_changed": left_evaluation_signature != right_evaluation_signature,
+            "source_set_changed": source_set_delta_count > 0,
+            "source_set_delta_count": source_set_delta_count,
+            "sources_added": source_diffs["sources_added"],
+            "sources_removed": source_diffs["sources_removed"],
+            "snapshot_ids_changed": [item.model_dump(exclude_none=True) for item in snapshot_ids_changed],
+            "freshness_changed": [item.model_dump(exclude_none=True) for item in freshness_changed],
+        }
+        snapshot_drift_signature = self._hash_canonical_payload(snapshot_drift_payload)
+        snapshot_drift = SnapshotDriftReport(
+            left_snapshot_signature=left_snapshot_signature,
+            right_snapshot_signature=right_snapshot_signature,
+            snapshot_signature_changed=left_snapshot_signature != right_snapshot_signature,
+            left_evaluation_signature=left_evaluation_signature,
+            right_evaluation_signature=right_evaluation_signature,
+            evaluation_signature_changed=left_evaluation_signature != right_evaluation_signature,
+            source_set_changed=source_set_delta_count > 0,
+            source_set_delta_count=source_set_delta_count,
+            sources_added=source_diffs["sources_added"],
+            sources_removed=source_diffs["sources_removed"],
+            snapshot_ids_changed=snapshot_ids_changed,
+            freshness_changed=freshness_changed,
+            drift_signature=snapshot_drift_signature,
+        )
 
         left_trace_counts = Counter(event.type for event in left.trace_events)
         right_trace_counts = Counter(event.type for event in right.trace_events)
@@ -693,7 +1150,7 @@ class ResearchSessionStore:
 
         changed_fields = [item["field"] for item in metadata_diffs if item["changed"]]
         total_claim_changes = sum(len(values) for values in claim_diffs.values())
-        total_source_changes = len(source_diffs["sources_added"]) + len(source_diffs["sources_removed"])
+        total_source_changes = source_set_delta_count
 
         summary = {
             "changed_fields": changed_fields,
@@ -703,6 +1160,11 @@ class ResearchSessionStore:
             "thesis_changed": left.brief.thesis != right.brief.thesis,
             "confidence_changed": left.brief.confidence != right.brief.confidence,
             "signature_match": left.canonical_signature == right.canonical_signature,
+            "snapshot_id_changes": len(snapshot_ids_changed),
+            "freshness_changes": len(freshness_changed),
+            "source_set_changed": source_set_delta_count > 0,
+            "evaluation_signature_changed": left_evaluation_signature != right_evaluation_signature,
+            "snapshot_drift_signature": snapshot_drift_signature,
         }
 
         return SessionComparison(
@@ -712,6 +1174,7 @@ class ResearchSessionStore:
             metadata_diffs=metadata_diffs,
             claim_diffs=claim_diffs,
             source_diffs=source_diffs,
+            snapshot_drift=snapshot_drift,
             trace_diffs=trace_diffs,
             summary=summary,
         )
@@ -734,6 +1197,7 @@ class ResearchSessionStore:
 
     def build_integrity_report(self, record: SavedResearchSession) -> SessionIntegrityReport:
         recomputed_signature = self._compute_signature_for_record(record)
+        snapshot_signature = self._snapshot_signature(record.brief)
         trace_steps = [event.step for event in record.trace_events]
         trace_step_order_valid = all(
             previous <= current for previous, current in zip(trace_steps, trace_steps[1:])
@@ -749,6 +1213,33 @@ class ResearchSessionStore:
             if source.provenance is not None
         )
         freshness_valid = freshness_counter.get("unknown", 0) == 0
+        snapshots = [
+            source.provenance.snapshot
+            for source in sources_with_provenance
+            if source.provenance is not None
+        ]
+        snapshot_complete = len(snapshots) == len(record.brief.sources) and all(
+            snapshot is not None
+            and bool(snapshot.snapshot_id.strip())
+            and bool(snapshot.dataset.strip())
+            and snapshot.snapshot_kind != "unknown"
+            for snapshot in snapshots
+        )
+        snapshot_consistent = all(
+            source.provenance is not None
+            and source.provenance.snapshot is not None
+            and (
+                source.provenance.mode != "demo"
+                or source.provenance.snapshot.snapshot_kind in {"fixture", "derived"}
+            )
+            for source in record.brief.sources
+        )
+        snapshot_summary = record.brief.snapshot_summary if isinstance(record.brief.snapshot_summary, dict) else {}
+        snapshot_summary_present = bool(snapshot_summary)
+        snapshot_checksum_complete = all(
+            snapshot is not None and bool((snapshot.checksum_sha256 or "").strip())
+            for snapshot in snapshots
+        )
 
         recomputed_evaluation = self._build_evaluation(
             brief=record.brief,
@@ -776,6 +1267,14 @@ class ResearchSessionStore:
             issues.append("one or more sources are missing provenance metadata")
         if not freshness_valid:
             issues.append("one or more sources have unknown freshness state")
+        if not snapshot_complete:
+            issues.append("one or more sources are missing snapshot provenance metadata")
+        if not snapshot_consistent:
+            issues.append("snapshot provenance is inconsistent with source mode")
+        if not snapshot_summary_present:
+            issues.append("snapshot summary metadata is missing")
+        if not snapshot_checksum_complete:
+            issues.append("snapshot checksums are incomplete")
         if not evaluation_present:
             issues.append("evaluation report is missing")
         elif not evaluation_valid:
@@ -792,9 +1291,14 @@ class ResearchSessionStore:
             evidence_state_valid=evidence_state_valid,
             provenance_complete=provenance_complete,
             freshness_valid=freshness_valid,
+            snapshot_complete=snapshot_complete,
+            snapshot_consistent=snapshot_consistent,
+            snapshot_summary_present=snapshot_summary_present,
+            snapshot_checksum_complete=snapshot_checksum_complete,
             evaluation_present=evaluation_present,
             evaluation_valid=evaluation_valid,
             evaluation_signature=(record.evaluation.deterministic_signature if record.evaluation else None),
+            bundle_snapshot_signature=snapshot_signature,
             issues=issues,
             checked_at=_iso_now(),
             provenance={
@@ -811,6 +1315,17 @@ class ResearchSessionStore:
                     "stale": freshness_counter.get("stale", 0),
                     "unknown": freshness_counter.get("unknown", 0),
                 },
+                "snapshot_kind_counts": (
+                    snapshot_summary.get("snapshot_kind_counts")
+                    if isinstance(snapshot_summary.get("snapshot_kind_counts"), dict)
+                    else {}
+                ),
+                "cache_lineage_counts": (
+                    snapshot_summary.get("cache_lineage_counts")
+                    if isinstance(snapshot_summary.get("cache_lineage_counts"), dict)
+                    else {}
+                ),
+                "snapshot_signature": snapshot_signature,
                 "evaluation_passed": record.evaluation.passed if record.evaluation else None,
             },
         )
@@ -846,18 +1361,41 @@ class ResearchSessionStore:
             if isinstance(record.brief.provenance_summary, dict)
             else None
         )
+        snapshot_summary = (
+            record.brief.snapshot_summary
+            if isinstance(record.brief.snapshot_summary, dict)
+            else None
+        )
+        snapshot_projection = self._snapshot_projection(record.brief)
+        snapshot_signature = self._snapshot_signature(record.brief)
         return {
-            "bundle_version": "phase-6",
+            "bundle_version": "phase-7",
             "exported_at": _iso_now(),
             "session": record.model_dump(),
             "integrity": integrity.model_dump(),
             "evaluation": record.evaluation.model_dump() if record.evaluation else None,
+            "snapshot_provenance": {
+                "summary": snapshot_summary,
+                "sources": snapshot_projection,
+                "signature_sha256": snapshot_signature,
+            },
             "provenance": {
                 "source": "meridian-workspace",
                 "app_version": "0.1.0",
                 "model": "glm-5.1",
                 "mode": record.mode,
                 "freshness_counts": freshness_counts,
+                "snapshot_kind_counts": (
+                    snapshot_summary.get("snapshot_kind_counts")
+                    if isinstance(snapshot_summary, dict)
+                    else None
+                ),
+                "cache_lineage_counts": (
+                    snapshot_summary.get("cache_lineage_counts")
+                    if isinstance(snapshot_summary, dict)
+                    else None
+                ),
+                "snapshot_signature": snapshot_signature,
                 "evaluation_signature": (
                     record.evaluation.deterministic_signature if record.evaluation else None
                 ),
@@ -911,8 +1449,19 @@ class ResearchSessionStore:
             claim_refs = ", ".join(source.claim_refs) if source.claim_refs else "none"
             freshness = source.provenance.freshness if source.provenance else "unknown"
             observed_at = source.provenance.observed_at if source.provenance else "n/a"
+            snapshot_kind = (
+                source.provenance.snapshot.snapshot_kind
+                if source.provenance and source.provenance.snapshot
+                else "unknown"
+            )
+            snapshot_id = (
+                source.provenance.snapshot.snapshot_id
+                if source.provenance and source.provenance.snapshot
+                else "n/a"
+            )
+            cache_lineage = source.provenance.cache_lineage if source.provenance else "unknown"
             lines.append(
-                f"- {source.type}:{source.id} | claims: {claim_refs} | freshness: {freshness} | observed_at: {observed_at} | {source.excerpt}"
+                f"- {source.type}:{source.id} | claims: {claim_refs} | freshness: {freshness} | cache_lineage: {cache_lineage} | snapshot_kind: {snapshot_kind} | snapshot_id: {snapshot_id} | observed_at: {observed_at} | {source.excerpt}"
             )
 
         lines.extend(["", "## Signal Conflicts"])
@@ -934,6 +1483,14 @@ class ResearchSessionStore:
         if isinstance(record.brief.provenance_summary, dict) and record.brief.provenance_summary:
             for key, value in record.brief.provenance_summary.items():
                 lines.append(f"- {key}: {value}")
+        else:
+            lines.append("- none")
+
+        lines.extend(["", "## Snapshot Summary"])
+        if isinstance(record.brief.snapshot_summary, dict) and record.brief.snapshot_summary:
+            for key, value in record.brief.snapshot_summary.items():
+                lines.append(f"- {key}: {value}")
+            lines.append(f"- snapshot_signature: {self._snapshot_signature(record.brief)}")
         else:
             lines.append("- none")
 
