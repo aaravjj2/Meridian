@@ -6,6 +6,7 @@ import type {
   ResearchBrief,
   ResearchCollection,
   ResearchCollectionSummary,
+  ResearchReviewChecklist,
   ResearchThreadTimelineDetail,
   ResearchThesisDelta,
   SavedResearchSessionSummary,
@@ -27,12 +28,14 @@ type WorkspacePanelProps = {
   recaptureBusy: boolean
   comparisonBusy: boolean
   integrityBusy: boolean
+  reviewBusy: boolean
   searchValue: string
   includeArchived: boolean
   queryClassFilter: ResearchBrief['query_class'] | 'all'
   comparisonResult: SessionComparison | null
   recaptureLineage: SessionRecaptureLineage | null
   integrityReport: SessionIntegrityReport | null
+  reviewChecklist: ResearchReviewChecklist | null
   integrityOverview: { count: number; issueCount: number } | null
   statusMessage: string | null
   collectionState: 'loading' | 'ready' | 'error'
@@ -71,6 +74,7 @@ type WorkspacePanelProps = {
   onArchive: (savedId: string, archived: boolean) => void
   onDelete: (savedId: string) => void
   onRecapture: (savedId: string) => void
+  onReview: (savedId: string) => void
   onCompare: (leftId: string, rightId: string) => void
   onVerifyIntegrity: (savedId: string) => void
   onVerifyWorkspaceIntegrity: () => void
@@ -138,12 +142,14 @@ export default function WorkspacePanel({
   recaptureBusy,
   comparisonBusy,
   integrityBusy,
+  reviewBusy,
   searchValue,
   includeArchived,
   queryClassFilter,
   comparisonResult,
   recaptureLineage,
   integrityReport,
+  reviewChecklist,
   integrityOverview,
   statusMessage,
   collectionState,
@@ -179,6 +185,7 @@ export default function WorkspacePanel({
   onArchive,
   onDelete,
   onRecapture,
+  onReview,
   onCompare,
   onVerifyIntegrity,
   onVerifyWorkspaceIntegrity,
@@ -297,6 +304,18 @@ export default function WorkspacePanel({
             disabled={integrityBusy}
           >
             {integrityBusy ? 'Verifying...' : 'Verify All'}
+          </button>
+          <button
+            type="button"
+            data-testid="workspace-review-active"
+            onClick={() => {
+              if (activeSavedSessionId) {
+                onReview(activeSavedSessionId)
+              }
+            }}
+            disabled={reviewBusy || !activeSavedSessionId}
+          >
+            {reviewBusy ? 'Reviewing...' : 'Review Active'}
           </button>
         </div>
       </div>
@@ -878,6 +897,38 @@ export default function WorkspacePanel({
         ) : null}
       </div>
 
+      <div className="workspace-integrity" data-testid="workspace-review-panel">
+        <span className="block-label">GUIDED REVIEW</span>
+        {reviewChecklist ? (
+          <div className="workspace-integrity-result" data-testid="workspace-review-result">
+            <p data-testid="workspace-review-status">
+              Status: {reviewChecklist.status.toUpperCase()} | passed {reviewChecklist.passed_count}/
+              {reviewChecklist.total_count}
+            </p>
+            <p data-testid="workspace-review-summary">{reviewChecklist.summary}</p>
+            <p className="workspace-item-snapshot-signature" data-testid="workspace-review-signature">
+              Signature: {reviewChecklist.deterministic_signature}
+            </p>
+            <div className="evaluation-checks" data-testid="workspace-review-items">
+              {reviewChecklist.items.map((item, idx) => (
+                <div
+                  key={`${item.check_id}-${idx}`}
+                  className={item.passed ? 'evaluation-check evaluation-check-pass' : 'evaluation-check evaluation-check-fail'}
+                  data-testid={`workspace-review-item-${idx}`}
+                >
+                  <strong>{item.title}</strong>
+                  <span>{item.detail}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="workspace-status" data-testid="workspace-review-empty">
+            Run Review on any saved session to audit claim linkage, freshness, provenance, evaluation, template metadata, and snapshot completeness.
+          </p>
+        )}
+      </div>
+
       {historyState === 'loading' ? (
         <div className="workspace-state" data-testid="workspace-loading">
           Loading saved sessions...
@@ -990,6 +1041,14 @@ export default function WorkspacePanel({
                     disabled={integrityBusy}
                   >
                     Verify
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`workspace-review-${idx}`}
+                    onClick={() => onReview(session.id)}
+                    disabled={reviewBusy}
+                  >
+                    Review
                   </button>
                   <button
                     type="button"

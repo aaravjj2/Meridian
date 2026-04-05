@@ -126,6 +126,28 @@ class ResearchEvaluationReport(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
 
 
+class ResearchReviewChecklistItem(BaseModel):
+    check_id: str
+    title: str
+    passed: bool
+    detail: str
+    value: str | int | float | None = None
+
+
+class ResearchReviewChecklist(BaseModel):
+    saved_id: str | None = None
+    session_id: str | None = None
+    status: Literal["pass", "fail"]
+    completed: bool
+    passed_count: int = Field(ge=0)
+    failed_count: int = Field(ge=0)
+    total_count: int = Field(ge=0)
+    deterministic_signature: str
+    generated_at: str
+    summary: str
+    items: list[ResearchReviewChecklistItem] = Field(default_factory=list)
+
+
 class SignalConflict(BaseModel):
     conflict_id: str
     title: str
@@ -487,7 +509,7 @@ class BundleInventoryEntry(BaseModel):
 
 
 class SessionBundleManifest(BaseModel):
-    schema: str
+    schema_version: str = Field(alias="schema")
     bundle_kind: Literal["session"]
     generated_at: str
     saved_id: str
@@ -510,7 +532,7 @@ class SessionBundleExportV2(BaseModel):
 
 
 class CollectionBundleManifest(BaseModel):
-    schema: str
+    schema_version: str = Field(alias="schema")
     bundle_kind: Literal["collection"]
     collection_id: str
     collection_signature: str | None = None

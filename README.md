@@ -254,6 +254,7 @@ Meridian supports a single-user research workspace directly in the terminal flow
 - Expose snapshot summary metadata (kind counts, lineage counts, checksum coverage) in terminal/workspace UI
 - Generate deterministic snapshot-aware evaluation checks with stable signatures for audit/replay confidence
 - Run integrity checks that validate snapshot completeness/consistency alongside canonical signatures
+- Run guided review checklists for saved sessions to audit claim/source linkage, conflicts, freshness policy, provenance, evaluation, template metadata, and snapshot completeness
 - Export saved sessions as JSON, Markdown, or bundle v2 JSON with manifest signatures and offline file-equivalent sections (`session.json`, `trace.json`, `provenance.json`, `evaluation.json`, `integrity.json`, `report.md`, `timeline.json`, `compare.json`)
 - Continue from reopened sessions using the original runtime thread id
 - Create compact research collections (notebooks) with title, summary, and notes

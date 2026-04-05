@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 from fastapi.testclient import TestClient
@@ -447,3 +449,54 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
 
     missing = client.get(f"/api/v1/research/sessions/{first_id}")
     assert missing.status_code == 404
+
+
+def test_backend_startup_import_has_no_pydantic_schema_shadow_warnings() -> None:
+    process = subprocess.run(
+        [sys.executable, "-c", "import apps.api.main"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined_output = f"{process.stdout}\n{process.stderr}"
+    assert 'shadows an attribute in parent "BaseModel"' not in combined_output
+
+
+def test_workspace_review_checklist_endpoint_is_deterministic_and_complete() -> None:
+    question = "Audit this macro session with explicit review checks."
+    thread_id = "wave16-guided-review-thread"
+    events = _collect_events(question=question, session_id=thread_id)
+    complete = events[-1]
+
+    saved_response = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(question=question, session_id=thread_id, events=events, brief=complete["brief"]),
+    )
+    assert saved_response.status_code == 200
+    saved_id = saved_response.json()["id"]
+
+    review_first = client.get(f"/api/v1/research/sessions/{saved_id}/review")
+    review_second = client.get(f"/api/v1/research/sessions/{saved_id}/review")
+
+    assert review_first.status_code == 200
+    assert review_second.status_code == 200
+
+    payload = review_first.json()
+    assert payload["saved_id"] == saved_id
+    assert payload["status"] == "pass"
+    assert payload["completed"] is True
+    assert payload["total_count"] == 7
+    assert payload["failed_count"] == 0
+    assert payload["deterministic_signature"] == review_second.json()["deterministic_signature"]
+
+    checks = {item["check_id"]: item for item in payload["items"]}
+    assert {
+        "claim_source_coverage",
+        "conflict_linkage",
+        "freshness_acceptability",
+        "provenance_completeness",
+        "evaluation_pass_fail",
+        "template_metadata",
+        "snapshot_completeness",
+    }.issubset(set(checks))
+    assert checks["template_metadata"]["passed"] is True

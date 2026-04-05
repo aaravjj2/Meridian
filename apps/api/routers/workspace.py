@@ -148,6 +148,15 @@ async def verify_saved_session_integrity(saved_id: str) -> dict[str, object]:
     return report.model_dump()
 
 
+@router.get("/research/sessions/{saved_id}/review")
+async def review_saved_session(saved_id: str) -> dict[str, object]:
+    store = get_session_store()
+    checklist = store.review(saved_id=saved_id)
+    if checklist is None:
+        raise HTTPException(status_code=404, detail=f"Saved session not found: {saved_id}")
+    return checklist.model_dump()
+
+
 @router.get("/research/sessions/{saved_id}/export")
 async def export_saved_session(
     saved_id: str,

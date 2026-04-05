@@ -380,6 +380,11 @@ Wave 15 adds deterministic research templates with typed catalog metadata and en
 Template selection now flows through API requests, brief payloads, saved sessions, thread/collection timelines,
 and bundle exports for repeatable research framing and auditability.
 
+Wave 16 adds guided review mode for systematic session auditing. A deterministic checklist is generated per saved
+session via `/research/sessions/{id}/review` and surfaced in workspace UI with stable test ids. Checklist coverage
+includes claim/source linkage, conflict linkage, freshness acceptability, provenance completeness, evaluation status,
+template metadata coverage, and snapshot completeness.
+
 ---
 
 ## Deployment Architecture

@@ -9,6 +9,9 @@ import '../styles/globals.css'
 export const metadata: Metadata = {
   title: 'Meridian',
   description: 'Meridian GLM-5.1 research terminal',
+  icons: {
+    icon: '/favicon.svg',
+  },
 }
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-ui', display: 'swap' })

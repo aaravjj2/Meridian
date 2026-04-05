@@ -212,7 +212,7 @@ def _collection_bundle_payload(collection: ResearchCollection) -> dict[str, obje
             "files": files,
         }
     )
-    return bundle.model_dump(exclude_none=True)
+    return bundle.model_dump(exclude_none=True, by_alias=True)
 
 
 def _detail_from_collection(collection: ResearchCollection) -> ResearchCollectionDetail:

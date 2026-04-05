@@ -1161,4 +1161,75 @@ describe('HomePage workspace persistence', () => {
       expect(screen.getByTestId('workspace-collection-timeline-item-0')).toBeInTheDocument()
     })
   })
+
+  it('runs guided review and renders review checklist output', async () => {
+    let reviewCalls = 0
+
+    server.use(
+      http.get('/api/v1/regime', () =>
+        HttpResponse.json({
+          dimensions: {
+            growth: 'EXPANSION',
+            inflation: 'ELEVATED',
+            monetary: 'RESTRICTIVE',
+            credit: 'CAUTION',
+            labor: 'TIGHT',
+          },
+          narrative: 'n',
+          updated_at: '2026-04-03T10:00:00Z',
+        })
+      ),
+      http.get('/api/v1/research/sessions', () => HttpResponse.json({ sessions: [savedSummary], count: 1 })),
+      http.get('/api/v1/research/sessions/:savedId', ({ params }) => {
+        if (params.savedId !== savedSummary.id) {
+          return HttpResponse.json({ detail: 'not found' }, { status: 404 })
+        }
+        return HttpResponse.json(savedRecord)
+      }),
+      http.get('/api/v1/research/sessions/:savedId/timeline', () => HttpResponse.json(threadTimelineSingle)),
+      http.get('/api/v1/research/sessions/:savedId/review', ({ params }) => {
+        reviewCalls += 1
+        return HttpResponse.json({
+          saved_id: params.savedId,
+          session_id: savedSummary.session_id,
+          status: 'pass',
+          completed: true,
+          passed_count: 7,
+          failed_count: 0,
+          total_count: 7,
+          deterministic_signature: 'review-sig-123',
+          generated_at: '2026-04-04T12:00:00Z',
+          summary: 'Review complete: 7/7 checks passed.',
+          items: [
+            {
+              check_id: 'claim_source_coverage',
+              title: 'Claim/Source Coverage',
+              passed: true,
+              detail: 'Every claim is linked by at least one source reference.',
+              value: '7/7',
+            },
+          ],
+        })
+      }),
+      http.get('/api/v1/collections', () => HttpResponse.json({ collections: [], count: 0 }))
+    )
+
+    render(<HomePage />)
+
+    expect(await screen.findByTestId('workspace-item-0')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-review-0'))
+    expect(await screen.findByTestId('workspace-review-result')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-review-status')).toHaveTextContent('PASS')
+    expect(screen.getByTestId('workspace-review-signature')).toHaveTextContent('review-sig-123')
+    expect(screen.getByTestId('workspace-review-item-0')).toHaveTextContent('Claim/Source Coverage')
+
+    fireEvent.click(screen.getByTestId('workspace-reopen-0'))
+    expect(await screen.findByTestId('brief-complete')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-review-active'))
+    await waitFor(() => {
+      expect(reviewCalls).toBeGreaterThanOrEqual(2)
+    })
+  })
 })

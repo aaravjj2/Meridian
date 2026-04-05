@@ -17,6 +17,8 @@ from meridian.normalisation.schemas import (
     ResearchCollectionTimelineEntry,
     ResearchEvaluationCheck,
     ResearchEvaluationReport,
+    ResearchReviewChecklist,
+    ResearchReviewChecklistItem,
     ResearchTemplateId,
     ResearchThesisDelta,
     ResearchThesisStateSnapshot,
@@ -988,6 +990,162 @@ class ResearchSessionStore:
             metrics=metrics,
         )
 
+    def _build_review_checklist(self, record: SavedResearchSession) -> ResearchReviewChecklist:
+        claim_ids = self._claim_ids(record.brief)
+        source_claim_refs = {
+            claim_ref
+            for source in record.brief.sources
+            for claim_ref in source.claim_refs
+        }
+        source_refs = {f"{source.type}:{source.id}" for source in record.brief.sources}
+
+        claim_source_coverage = claim_ids.issubset(source_claim_refs)
+
+        conflicts = list(record.brief.signal_conflicts)
+        conflict_linkage = bool(conflicts) and all(
+            len(conflict.claim_refs) >= 2
+            and set(conflict.claim_refs).issubset(claim_ids)
+            and set(conflict.source_refs).issubset(source_refs)
+            for conflict in conflicts
+        )
+
+        freshness_policy = self._freshness_policy_summary(record.brief)
+        freshness_acceptability = int(freshness_policy.get("violation_count", 0)) == 0
+
+        integrity = self.build_integrity_report(record)
+        provenance_complete = integrity.provenance_complete
+        evaluation_status = bool(
+            record.evaluation is not None
+            and record.evaluation.passed
+            and integrity.evaluation_valid
+        )
+        snapshot_complete = (
+            integrity.snapshot_complete
+            and integrity.snapshot_consistent
+            and integrity.snapshot_summary_present
+            and integrity.snapshot_checksum_complete
+        )
+
+        brief_template_id = record.brief.template_id
+        brief_template_title = record.brief.template_title
+        template_known = bool(
+            record.template_id
+            or record.template_title
+            or brief_template_id
+            or brief_template_title
+        )
+        if not template_known:
+            template_metadata_ok = True
+            template_detail = "Template metadata not present for this session (optional)."
+            template_value: str | int | float | None = "n/a"
+        else:
+            template_id_value = record.template_id or brief_template_id
+            template_title_value = record.template_title or brief_template_title
+            template_consistent = (
+                (record.template_id is None or brief_template_id is None or record.template_id == brief_template_id)
+                and (
+                    record.template_title is None
+                    or brief_template_title is None
+                    or record.template_title == brief_template_title
+                )
+            )
+            template_metadata_ok = bool(template_id_value and template_title_value and template_consistent)
+            template_detail = (
+                "Template metadata is present and consistent."
+                if template_metadata_ok
+                else "Template metadata is partial or inconsistent between brief and saved record."
+            )
+            template_value = template_id_value or "missing"
+
+        items = [
+            ResearchReviewChecklistItem(
+                check_id="claim_source_coverage",
+                title="Claim/Source Coverage",
+                passed=claim_source_coverage,
+                detail="Every claim is linked by at least one source reference.",
+                value=f"{len(source_claim_refs)}/{len(claim_ids)}",
+            ),
+            ResearchReviewChecklistItem(
+                check_id="conflict_linkage",
+                title="Conflict Linkage",
+                passed=conflict_linkage,
+                detail="Signal conflicts reference valid claim ids and source refs.",
+                value=len(conflicts),
+            ),
+            ResearchReviewChecklistItem(
+                check_id="freshness_acceptability",
+                title="Freshness Acceptability",
+                passed=freshness_acceptability,
+                detail="Source freshness policy has no violations.",
+                value=int(freshness_policy.get("violation_count", 0)),
+            ),
+            ResearchReviewChecklistItem(
+                check_id="provenance_completeness",
+                title="Provenance Completeness",
+                passed=provenance_complete,
+                detail="All sources include provenance metadata.",
+                value=len(record.brief.sources),
+            ),
+            ResearchReviewChecklistItem(
+                check_id="evaluation_pass_fail",
+                title="Evaluation Pass/Fail",
+                passed=evaluation_status,
+                detail="Deterministic evaluation exists, passes, and matches recomputed signature.",
+                value=(record.evaluation.deterministic_signature if record.evaluation else "missing"),
+            ),
+            ResearchReviewChecklistItem(
+                check_id="template_metadata",
+                title="Template Metadata",
+                passed=template_metadata_ok,
+                detail=template_detail,
+                value=template_value,
+            ),
+            ResearchReviewChecklistItem(
+                check_id="snapshot_completeness",
+                title="Snapshot Completeness",
+                passed=snapshot_complete,
+                detail="Snapshot metadata, consistency, summary, and checksums are complete.",
+                value=integrity.bundle_snapshot_signature,
+            ),
+        ]
+
+        passed_count = sum(1 for item in items if item.passed)
+        failed_count = len(items) - passed_count
+        status: Literal["pass", "fail"] = "pass" if failed_count == 0 else "fail"
+        summary = (
+            f"Review complete: {passed_count}/{len(items)} checks passed."
+            if failed_count == 0
+            else f"Review incomplete: {failed_count} check(s) failed."
+        )
+
+        signature_payload = {
+            "saved_id": record.id,
+            "session_id": record.session_id,
+            "status": status,
+            "items": [
+                {
+                    "check_id": item.check_id,
+                    "passed": item.passed,
+                    "value": item.value,
+                }
+                for item in items
+            ],
+        }
+
+        return ResearchReviewChecklist(
+            saved_id=record.id,
+            session_id=record.session_id,
+            status=status,
+            completed=status == "pass",
+            passed_count=passed_count,
+            failed_count=failed_count,
+            total_count=len(items),
+            deterministic_signature=self._hash_canonical_payload(signature_payload),
+            generated_at=_iso_now(),
+            summary=summary,
+            items=items,
+        )
+
     def _build_record(self, saved_id: str, payload: SaveResearchSessionRequest, timestamp: str) -> SavedResearchSession:
         enriched_brief = self._enrich_brief_provenance(payload.brief, mode=payload.mode)
         if payload.template_id and not enriched_brief.template_id:
@@ -1566,6 +1724,12 @@ class ResearchSessionStore:
         if not candidates:
             return None
         return self.get(candidates[0].id)
+
+    def review(self, saved_id: str) -> ResearchReviewChecklist | None:
+        record = self.get(saved_id)
+        if record is None:
+            return None
+        return self._build_review_checklist(record)
 
     def rename(self, saved_id: str, label: str | None) -> SavedResearchSession | None:
         record = self.get(saved_id)
@@ -2214,7 +2378,7 @@ class ResearchSessionStore:
             "files": files,
             }
         )
-        return bundle.model_dump(exclude_none=True)
+        return bundle.model_dump(exclude_none=True, by_alias=True)
 
     def export_markdown(self, record: SavedResearchSession) -> str:
         trace_summary = {

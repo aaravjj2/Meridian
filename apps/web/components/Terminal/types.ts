@@ -416,3 +416,25 @@ export type SessionIntegrityReport = {
   checked_at: string
   provenance: Record<string, unknown>
 }
+
+export type ResearchReviewChecklistItem = {
+  check_id: string
+  title: string
+  passed: boolean
+  detail: string
+  value?: string | number | null
+}
+
+export type ResearchReviewChecklist = {
+  saved_id?: string | null
+  session_id?: string | null
+  status: 'pass' | 'fail'
+  completed: boolean
+  passed_count: number
+  failed_count: number
+  total_count: number
+  deterministic_signature: string
+  generated_at: string
+  summary: string
+  items: ResearchReviewChecklistItem[]
+}

@@ -346,6 +346,26 @@ Wave 10 evaluation check:
 
 Runs integrity checks for a single saved session.
 
+### GET /api/v1/research/sessions/{saved_id}/review
+
+Runs the Wave 16 guided review checklist for a saved session.
+
+Response includes:
+
+- `status`: `pass | fail`
+- `completed`: `true` when all review checks pass
+- `passed_count`, `failed_count`, `total_count`
+- `summary`: compact review outcome text
+- `deterministic_signature`: stable hash over review projection
+- `items[]`: deterministic checklist entries:
+  - `claim_source_coverage`
+  - `conflict_linkage`
+  - `freshness_acceptability`
+  - `provenance_completeness`
+  - `evaluation_pass_fail`
+  - `template_metadata`
+  - `snapshot_completeness`
+
 ### GET /api/v1/research/sessions/{saved_id}/export
 
 Exports a saved session for offline review.

@@ -16,6 +16,7 @@ import type {
   ResearchCollectionSummary,
   ResearchEvaluationReport,
   ResearchBrief,
+  ResearchReviewChecklist,
   ResearchTemplateDefinition,
   ResearchTemplateId,
   SessionRecaptureLineage,
@@ -508,6 +509,14 @@ async function getSavedSessionIntegrity(savedId: string): Promise<SessionIntegri
   return (await response.json()) as SessionIntegrityReport
 }
 
+async function getSavedSessionReview(savedId: string): Promise<ResearchReviewChecklist> {
+  const response = await fetch(`/api/v1/research/sessions/${encodeURIComponent(savedId)}/review`)
+  if (!response.ok) {
+    throw new Error(`Failed to run guided review: ${response.status}`)
+  }
+  return (await response.json()) as ResearchReviewChecklist
+}
+
 async function getWorkspaceIntegrity(options?: { search?: string; includeArchived?: boolean }): Promise<SessionIntegrityReport[]> {
   const params = new URLSearchParams()
   if (options?.search?.trim()) {
@@ -721,6 +730,8 @@ export default function HomePage() {
   const [recaptureLineage, setRecaptureLineage] = useState<SessionRecaptureLineage | null>(null)
   const [integrityReport, setIntegrityReport] = useState<SessionIntegrityReport | null>(null)
   const [integrityOverview, setIntegrityOverview] = useState<{ count: number; issueCount: number } | null>(null)
+  const [reviewBusy, setReviewBusy] = useState(false)
+  const [reviewChecklist, setReviewChecklist] = useState<ResearchReviewChecklist | null>(null)
   const [collectionsState, setCollectionsState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [collectionsError, setCollectionsError] = useState('')
   const [collections, setCollections] = useState<ResearchCollectionSummary[]>([])
@@ -1065,6 +1076,7 @@ export default function HomePage() {
         setRecaptureLineage(null)
         setIntegrityReport(null)
         setIntegrityOverview(null)
+        setReviewChecklist(null)
         if (saved.follow_up_context) {
           setFollowUpHint(saved.follow_up_context)
         }
@@ -1106,6 +1118,7 @@ export default function HomePage() {
       setRecaptureLineage(null)
       setIntegrityReport(null)
       setIntegrityOverview(null)
+      setReviewChecklist(null)
       setWorkspaceStatus(`Reopened session ${saved.id}`)
     } catch (reopenError) {
       setWorkspaceStatus(reopenError instanceof Error ? reopenError.message : 'Failed to reopen session')
@@ -1260,6 +1273,7 @@ export default function HomePage() {
         setComparisonResult(null)
         setIntegrityReport(null)
         setIntegrityOverview(null)
+        setReviewChecklist(null)
         setWorkspaceStatus(`Recaptured ${savedId} -> ${recaptured.saved.id}`)
       } catch (recaptureError) {
         setWorkspaceStatus(recaptureError instanceof Error ? recaptureError.message : 'Recapture failed')
@@ -1329,6 +1343,19 @@ export default function HomePage() {
     }
   }, [includeArchived, workspaceSearch])
 
+  const reviewSessionById = useCallback(async (savedId: string) => {
+    setReviewBusy(true)
+    try {
+      const checklist = await getSavedSessionReview(savedId)
+      setReviewChecklist(checklist)
+      setWorkspaceStatus(checklist.summary)
+    } catch (reviewError) {
+      setWorkspaceStatus(reviewError instanceof Error ? reviewError.message : 'Guided review failed')
+    } finally {
+      setReviewBusy(false)
+    }
+  }, [])
+
   async function runQuery(question: string) {
     const priorQuestion = queryHistory.length > 0 ? queryHistory[queryHistory.length - 1] : null
 
@@ -1342,6 +1369,7 @@ export default function HomePage() {
     setRecaptureLineage(null)
     setEvidenceState(EMPTY_EVIDENCE_STATE)
     setEvaluation(null)
+    setReviewChecklist(null)
     setEvidenceHydrationKey((previous) => previous + 1)
     setWorkspaceStatus(null)
 
@@ -1419,12 +1447,14 @@ export default function HomePage() {
               recaptureBusy={recaptureBusy}
               comparisonBusy={comparisonBusy}
               integrityBusy={integrityBusy}
+              reviewBusy={reviewBusy}
               searchValue={workspaceSearch}
               includeArchived={includeArchived}
               queryClassFilter={queryClassFilter}
               comparisonResult={comparisonResult}
               recaptureLineage={recaptureLineage}
               integrityReport={integrityReport}
+              reviewChecklist={reviewChecklist}
               integrityOverview={integrityOverview}
               statusMessage={workspaceStatus}
               collectionState={collectionsState}
@@ -1503,6 +1533,9 @@ export default function HomePage() {
               }}
               onRecapture={(savedId) => {
                 void recaptureSessionById(savedId)
+              }}
+              onReview={(savedId) => {
+                void reviewSessionById(savedId)
               }}
               onCompare={(leftId, rightId) => {
                 void compareSessionsById(leftId, rightId)

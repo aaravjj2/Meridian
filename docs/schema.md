@@ -100,6 +100,38 @@ Wave 10 freshness policy check includes:
 
 - `freshness_policy_compliance`
 
+## ResearchReviewChecklist
+
+- `saved_id: str | null`
+- `session_id: str | null`
+- `status: "pass" | "fail"`
+- `completed: bool`
+- `passed_count: int`
+- `failed_count: int`
+- `total_count: int`
+- `deterministic_signature: str`
+- `generated_at: str (ISO)`
+- `summary: str`
+- `items: list[ResearchReviewChecklistItem]`
+
+Checklist item shape:
+
+- `check_id: str`
+- `title: str`
+- `passed: bool`
+- `detail: str`
+- `value: str | int | float | null`
+
+Wave 16 guided-review check ids:
+
+- `claim_source_coverage`
+- `conflict_linkage`
+- `freshness_acceptability`
+- `provenance_completeness`
+- `evaluation_pass_fail`
+- `template_metadata`
+- `snapshot_completeness`
+
 ## TraceStep
 
 - `step_index: int`

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Meridian">
+  <rect width="64" height="64" rx="12" fill="#0b1219"/>
+  <path d="M14 46L32 14L50 46" fill="none" stroke="#29d3a1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="34" r="4" fill="#9af7d5"/>
+</svg>
