@@ -245,6 +245,62 @@ async def get_saved_session_timeline(
     return timeline.model_dump()
 
 
+@router.get("/research/sessions/{saved_id}/versions")
+async def list_saved_session_versions(
+    saved_id: str,
+    include_archived: bool = Query(default=True),
+) -> dict[str, object]:
+    store = get_session_store()
+    versions = store.list_brief_versions(saved_id=saved_id, include_archived=include_archived)
+    if versions is None:
+        raise HTTPException(status_code=404, detail=f"Saved session not found: {saved_id}")
+    return {
+        "versions": [item.model_dump() for item in versions],
+        "count": len(versions),
+    }
+
+
+@router.get("/research/sessions/{saved_id}/versions/compare")
+async def compare_saved_session_versions(
+    saved_id: str,
+    left_version_id: str = Query(min_length=8),
+    right_version_id: str = Query(min_length=8),
+) -> dict[str, object]:
+    store = get_session_store()
+    comparison = store.compare_brief_versions(
+        saved_id=saved_id,
+        left_version_id=left_version_id,
+        right_version_id=right_version_id,
+    )
+    if comparison is None:
+        raise HTTPException(status_code=404, detail="One or both brief versions were not found")
+    return comparison.model_dump()
+
+
+@router.get("/research/sessions/{saved_id}/versions/{version_id}")
+async def get_saved_session_version(saved_id: str, version_id: str) -> dict[str, object]:
+    store = get_session_store()
+    detail = store.get_brief_version(saved_id=saved_id, version_id=version_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"Brief version not found: {version_id}")
+    return detail.model_dump()
+
+
+@router.get("/research/sessions/{saved_id}/versions/{version_id}/export")
+async def export_saved_session_version(saved_id: str, version_id: str) -> Response:
+    store = get_session_store()
+    payload = store.export_brief_version_payload(saved_id=saved_id, version_id=version_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail=f"Brief version not found: {version_id}")
+
+    filename = f"{version_id}.brief.json"
+    return Response(
+        content=json.dumps(payload, indent=2) + "\n",
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.get("/research/sessions/{saved_id}/integrity")
 async def verify_saved_session_integrity(saved_id: str) -> dict[str, object]:
     store = get_session_store()

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 
 import type {
   ResearchBrief,
+  ResearchBriefVersionDiff,
+  ResearchBriefVersionSummary,
   ResearchCollection,
   ResearchCollectionSummary,
   ResearchEvaluationDashboard,
@@ -55,6 +57,11 @@ type WorkspacePanelProps = {
   threadTimelineState: 'idle' | 'loading' | 'ready' | 'error'
   threadTimelineError: string
   threadTimeline: ResearchThreadTimelineDetail | null
+  briefVersionState: 'idle' | 'loading' | 'ready' | 'error'
+  briefVersionError: string
+  briefVersionBusy: boolean
+  briefVersions: ResearchBriefVersionSummary[]
+  briefVersionDiff: ResearchBriefVersionDiff | null
   onSearchChange: (value: string) => void
   onToggleIncludeArchived: (value: boolean) => void
   onQueryClassFilterChange: (value: ResearchBrief['query_class'] | 'all') => void
@@ -71,6 +78,9 @@ type WorkspacePanelProps = {
   onCollectionRemoveSession: (sessionId: string) => void
   onCollectionReorderSession: (sessionId: string, direction: 'up' | 'down') => void
   onThreadTimelineRefresh: () => void
+  onBriefVersionRefresh: () => void
+  onBriefVersionCompare: (leftVersionId: string, rightVersionId: string) => void
+  onBriefVersionExport: (versionId: string) => void
   onSaveCurrent: () => void
   onExportCurrentJson: () => void
   onExportCurrentMarkdown: () => void
@@ -202,6 +212,11 @@ export default function WorkspacePanel({
   threadTimelineState,
   threadTimelineError,
   threadTimeline,
+  briefVersionState,
+  briefVersionError,
+  briefVersionBusy,
+  briefVersions,
+  briefVersionDiff,
   onSearchChange,
   onToggleIncludeArchived,
   onQueryClassFilterChange,
@@ -215,6 +230,9 @@ export default function WorkspacePanel({
   onCollectionRemoveSession,
   onCollectionReorderSession,
   onThreadTimelineRefresh,
+  onBriefVersionRefresh,
+  onBriefVersionCompare,
+  onBriefVersionExport,
   onSaveCurrent,
   onExportCurrentJson,
   onExportCurrentMarkdown,
@@ -242,6 +260,8 @@ export default function WorkspacePanel({
 }: WorkspacePanelProps) {
   const [compareLeftId, setCompareLeftId] = useState('')
   const [compareRightId, setCompareRightId] = useState('')
+  const [versionCompareLeftId, setVersionCompareLeftId] = useState('')
+  const [versionCompareRightId, setVersionCompareRightId] = useState('')
   const [newCollectionTitle, setNewCollectionTitle] = useState('')
   const [newCollectionSummary, setNewCollectionSummary] = useState('')
   const [newCollectionNotes, setNewCollectionNotes] = useState('')
@@ -265,6 +285,26 @@ export default function WorkspacePanel({
     setEditCollectionSummary(activeCollection?.summary ?? '')
     setEditCollectionNotes(activeCollection?.notes ?? '')
   }, [activeCollection])
+
+  useEffect(() => {
+    const versionIds = new Set(briefVersions.map((version) => version.version_id))
+
+    setVersionCompareLeftId((previous) => {
+      if (previous && versionIds.has(previous)) {
+        return previous
+      }
+      return briefVersions[0]?.version_id ?? ''
+    })
+
+    setVersionCompareRightId((previous) => {
+      if (previous && versionIds.has(previous)) {
+        return previous
+      }
+      return briefVersions.length > 1
+        ? briefVersions[briefVersions.length - 1].version_id
+        : briefVersions[0]?.version_id ?? ''
+    })
+  }, [briefVersions])
 
   function promptRename(session: SavedResearchSessionSummary): void {
     const promptValue = window.prompt('Rename saved session (optional label)', session.label ?? '')
@@ -619,6 +659,11 @@ export default function WorkspacePanel({
                       <p className="workspace-item-snapshot-signature">
                         Snapshot sig: {item.snapshot_signature ?? 'n/a'}
                       </p>
+                      {item.brief_version_id ? (
+                        <p className="workspace-item-snapshot-signature" data-testid={`workspace-collection-version-${idx}`}>
+                          Version v{item.brief_version_number ?? '?'} | {item.brief_version_id}
+                        </p>
+                      ) : null}
                       {!item.exists ? <p className="workspace-item-archived">Missing saved session</p> : null}
                       <div className="workspace-item-actions">
                         <button
@@ -737,6 +782,11 @@ export default function WorkspacePanel({
                       <p className="workspace-item-snapshot-signature">
                         Snapshot sig: {item.snapshot_signature ?? 'n/a'}
                       </p>
+                      {item.brief_version_id ? (
+                        <p className="workspace-item-snapshot-signature" data-testid={`workspace-thread-version-${idx}`}>
+                          Version v{item.brief_version_number ?? '?'} | {item.brief_version_id}
+                        </p>
+                      ) : null}
                       <div className="workspace-item-actions">
                         <button
                           type="button"
@@ -752,6 +802,152 @@ export default function WorkspacePanel({
                 })}
               </div>
             )}
+          </>
+        ) : null}
+      </div>
+
+      <div className="workspace-brief-versions" data-testid="workspace-brief-versions-panel">
+        <div className="workspace-collections-header">
+          <span className="block-label">BRIEF VERSIONS</span>
+          <button
+            type="button"
+            data-testid="workspace-brief-version-refresh"
+            onClick={onBriefVersionRefresh}
+            disabled={briefVersionState === 'loading' || briefVersionBusy}
+          >
+            {briefVersionState === 'loading' ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+
+        {briefVersionState === 'idle' ? (
+          <div className="workspace-state" data-testid="workspace-brief-version-idle">
+            Reopen or select a saved session to load brief versions.
+          </div>
+        ) : null}
+
+        {briefVersionState === 'loading' ? (
+          <div className="workspace-state" data-testid="workspace-brief-version-loading">
+            Loading brief versions...
+          </div>
+        ) : null}
+
+        {briefVersionState === 'error' ? (
+          <div className="workspace-state workspace-state-error" data-testid="workspace-brief-version-error">
+            {briefVersionError || 'Failed to load brief versions.'}
+          </div>
+        ) : null}
+
+        {briefVersionState === 'ready' && briefVersions.length === 0 ? (
+          <div className="workspace-state" data-testid="workspace-brief-version-empty">
+            No brief versions available for this thread.
+          </div>
+        ) : null}
+
+        {briefVersionState === 'ready' && briefVersions.length > 0 ? (
+          <>
+            <div className="workspace-compare-controls">
+              <select
+                data-testid="workspace-brief-version-compare-left"
+                value={versionCompareLeftId}
+                onChange={(event) => setVersionCompareLeftId(event.target.value)}
+              >
+                <option value="">Left version</option>
+                {briefVersions.map((version) => (
+                  <option key={`left-version-${version.version_id}`} value={version.version_id}>
+                    v{version.version_number} {savedAtLabel(version.saved_at)}
+                  </option>
+                ))}
+              </select>
+              <select
+                data-testid="workspace-brief-version-compare-right"
+                value={versionCompareRightId}
+                onChange={(event) => setVersionCompareRightId(event.target.value)}
+              >
+                <option value="">Right version</option>
+                {briefVersions.map((version) => (
+                  <option key={`right-version-${version.version_id}`} value={version.version_id}>
+                    v{version.version_number} {savedAtLabel(version.saved_at)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                data-testid="workspace-brief-version-compare-run"
+                onClick={() => onBriefVersionCompare(versionCompareLeftId, versionCompareRightId)}
+                disabled={briefVersionBusy || briefVersions.length < 2}
+              >
+                {briefVersionBusy ? 'Comparing...' : 'Run Version Diff'}
+              </button>
+            </div>
+
+            {briefVersionDiff ? (
+              <div className="workspace-compare-result" data-testid="workspace-brief-version-diff">
+                <p data-testid="workspace-brief-version-diff-signature">
+                  Signature: {briefVersionDiff.deterministic_signature}
+                </p>
+                <p data-testid="workspace-brief-version-diff-thesis">
+                  Thesis changed: {briefVersionDiff.thesis_changed ? 'yes' : 'no'} | confidence delta{' '}
+                  {briefVersionDiff.confidence_delta}
+                </p>
+                <p data-testid="workspace-brief-version-diff-claims">
+                  Claims bull +{briefVersionDiff.bull_claim_ids_added.length}/-
+                  {briefVersionDiff.bull_claim_ids_removed.length} | bear +
+                  {briefVersionDiff.bear_claim_ids_added.length}/-{briefVersionDiff.bear_claim_ids_removed.length} | risks
+                  +{briefVersionDiff.risk_claim_ids_added.length}/-{briefVersionDiff.risk_claim_ids_removed.length}
+                </p>
+                <p data-testid="workspace-brief-version-diff-sources">
+                  Sources +{briefVersionDiff.source_refs_added.length}/-
+                  {briefVersionDiff.source_refs_removed.length} | conflicts +
+                  {briefVersionDiff.conflict_ids_added.length}/-{briefVersionDiff.conflict_ids_removed.length}
+                </p>
+              </div>
+            ) : (
+              <p className="workspace-status" data-testid="workspace-brief-version-diff-empty">
+                Run Version Diff to inspect thesis, confidence, claim, source, and conflict deltas.
+              </p>
+            )}
+
+            <div className="workspace-list" data-testid="workspace-brief-version-list">
+              {briefVersions.map((version, idx) => (
+                <article
+                  key={version.version_id}
+                  className="workspace-item"
+                  data-testid={`workspace-brief-version-item-${idx}`}
+                >
+                  <header className="workspace-item-header">
+                    <span>v{version.version_number}</span>
+                    <span>{savedAtLabel(version.saved_at)}</span>
+                  </header>
+                  <p className="workspace-item-question">{version.question}</p>
+                  <p className="workspace-item-meta">
+                    {queryClassLabel(version.query_class)} | {templateLabel(version.template_title, version.template_id)}
+                  </p>
+                  <p className="workspace-item-snapshot-signature" data-testid={`workspace-brief-version-id-${idx}`}>
+                    Version id: {version.version_id}
+                  </p>
+                  <p className="workspace-item-snapshot-signature" data-testid={`workspace-brief-version-signature-${idx}`}>
+                    Brief sig: {version.brief_signature}
+                  </p>
+                  <div className="workspace-item-actions">
+                    <button
+                      type="button"
+                      data-testid={`workspace-brief-version-reopen-${idx}`}
+                      onClick={() => onReopen(version.saved_id)}
+                    >
+                      Reopen
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`workspace-brief-version-export-${idx}`}
+                      onClick={() => onBriefVersionExport(version.version_id)}
+                      disabled={exportBusy}
+                    >
+                      Export
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
           </>
         ) : null}
       </div>
@@ -1306,6 +1502,11 @@ export default function WorkspacePanel({
                 {session.snapshot_signature ? (
                   <p className="workspace-item-snapshot-signature" data-testid={`workspace-snapshot-signature-${idx}`}>
                     Snapshot sig: {session.snapshot_signature}
+                  </p>
+                ) : null}
+                {session.brief_version_id ? (
+                  <p className="workspace-item-snapshot-signature" data-testid={`workspace-version-signature-${idx}`}>
+                    Version v{session.brief_version_number ?? '?'} | {session.brief_version_id}
                   </p>
                 ) : null}
                 {session.archived ? (

@@ -4,6 +4,7 @@ from collections import Counter
 import hashlib
 import json
 import os
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -19,6 +20,9 @@ from meridian.normalisation.schemas import (
     EvidenceRankingSummary,
     EvidenceSourceRank,
     EvidenceStaleSourceRank,
+    ResearchBriefVersionDetail,
+    ResearchBriefVersionDiff,
+    ResearchBriefVersionSummary,
     ResearchBrief,
     ResearchCollectionTimelineEntry,
     ResearchEvaluationDashboard,
@@ -211,6 +215,9 @@ class SaveResearchSessionRequest(BaseModel):
 
 class SavedResearchSession(BaseModel):
     id: str
+    brief_version_id: str | None = None
+    brief_version_number: int | None = None
+    brief_signature: str | None = None
     question: str
     mode: Literal["demo", "live"]
     session_id: str
@@ -241,6 +248,9 @@ class SavedResearchSession(BaseModel):
 
 class SavedResearchSessionSummary(BaseModel):
     id: str
+    brief_version_id: str | None = None
+    brief_version_number: int | None = None
+    brief_signature: str | None = None
     question: str
     mode: Literal["demo", "live"]
     session_id: str
@@ -358,6 +368,12 @@ class SessionRecaptureResult(BaseModel):
     lineage: SessionRecaptureLineage
 
 
+class BriefVersionMetadata(BaseModel):
+    version_id: str
+    version_number: int = Field(ge=1)
+    brief_signature: str
+
+
 class SessionIntegrityReport(BaseModel):
     id: str
     signature_valid: bool
@@ -451,6 +467,78 @@ class ResearchSessionStore:
 
     def _json_file_size(self, payload: Any) -> int:
         return len((json.dumps(payload, indent=2) + "\n").encode("utf-8"))
+
+    def _brief_signature(self, brief: ResearchBrief) -> str:
+        return self._hash_canonical_payload(brief.model_dump(exclude_none=True))
+
+    def _brief_version_slug(self, session_id: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", session_id.lower()).strip("-")
+        return slug[:24] or "thread"
+
+    def _compose_brief_version_id(
+        self,
+        *,
+        session_id: str,
+        version_number: int,
+        brief_signature: str,
+    ) -> str:
+        return f"bver-{self._brief_version_slug(session_id)}-{version_number:04d}-{brief_signature[:10]}"
+
+    def _thread_records_ordered(self, session_id: str) -> list[SavedResearchSession]:
+        records = [item for item in self._all_records() if item.session_id == session_id]
+        records.sort(key=lambda item: (item.saved_at, item.id))
+        return records
+
+    def _brief_version_lookup(self, session_id: str) -> dict[str, ResearchBriefVersionSummary]:
+        lookup: dict[str, ResearchBriefVersionSummary] = {}
+        records = self._thread_records_ordered(session_id)
+        for idx, record in enumerate(records, start=1):
+            brief_signature = record.brief_signature or self._brief_signature(record.brief)
+            version_number = record.brief_version_number if record.brief_version_number else idx
+            version_id = record.brief_version_id or self._compose_brief_version_id(
+                session_id=session_id,
+                version_number=version_number,
+                brief_signature=brief_signature,
+            )
+
+            lookup[record.id] = ResearchBriefVersionSummary(
+                version_id=version_id,
+                version_number=version_number,
+                saved_id=record.id,
+                thread_session_id=record.session_id,
+                question=record.question,
+                query_class=record.query_class,
+                template_id=record.template_id,
+                template_title=record.template_title,
+                created_at=record.created_at,
+                saved_at=record.saved_at,
+                brief_signature=brief_signature,
+                canonical_signature=record.canonical_signature,
+                snapshot_signature=self._snapshot_signature(record.brief),
+            )
+
+        return lookup
+
+    def _record_with_brief_version_metadata(self, record: SavedResearchSession) -> SavedResearchSession:
+        if record.brief_version_id and record.brief_version_number and record.brief_signature:
+            return record
+
+        version_summary = self._brief_version_lookup(record.session_id).get(record.id)
+        if version_summary is None:
+            if not record.brief_signature:
+                record.brief_signature = self._brief_signature(record.brief)
+            return record
+
+        record.brief_version_id = version_summary.version_id
+        record.brief_version_number = version_summary.version_number
+        record.brief_signature = version_summary.brief_signature
+        return record
+
+    def _next_brief_version_number(self, session_id: str) -> int:
+        existing = self._brief_version_lookup(session_id)
+        if not existing:
+            return 1
+        return max(item.version_number for item in existing.values()) + 1
 
     def _compute_signature(self, payload: SaveResearchSessionRequest) -> str:
         canonical_payload = self._canonical_payload(
@@ -1281,13 +1369,25 @@ class ResearchSessionStore:
             items=items,
         )
 
-    def _build_record(self, saved_id: str, payload: SaveResearchSessionRequest, timestamp: str) -> SavedResearchSession:
+    def _build_record(
+        self,
+        saved_id: str,
+        payload: SaveResearchSessionRequest,
+        timestamp: str,
+        brief_version_number: int,
+    ) -> SavedResearchSession:
         enriched_brief = self._enrich_brief_provenance(payload.brief, mode=payload.mode)
         if payload.template_id and not enriched_brief.template_id:
             selected_template = resolve_research_template(payload.template_id)
             enriched_brief.template_id = payload.template_id
             if not enriched_brief.template_title:
                 enriched_brief.template_title = selected_template.title
+        brief_signature = self._brief_signature(enriched_brief)
+        brief_version_id = self._compose_brief_version_id(
+            session_id=payload.session_id,
+            version_number=brief_version_number,
+            brief_signature=brief_signature,
+        )
         evaluation = self._build_evaluation(
             brief=enriched_brief,
             trace_events=payload.trace_events,
@@ -1306,6 +1406,9 @@ class ResearchSessionStore:
 
         return SavedResearchSession(
             id=saved_id,
+            brief_version_id=brief_version_id,
+            brief_version_number=brief_version_number,
+            brief_signature=brief_signature,
             question=payload.question,
             mode=payload.mode,
             session_id=payload.session_id,
@@ -1602,6 +1705,7 @@ class ResearchSessionStore:
         )
 
     def _build_summary(self, record: SavedResearchSession) -> SavedResearchSessionSummary:
+        record = self._record_with_brief_version_metadata(record)
         snapshot_summary = (
             record.brief.snapshot_summary
             if isinstance(record.brief.snapshot_summary, dict)
@@ -1629,6 +1733,9 @@ class ResearchSessionStore:
         )
         return SavedResearchSessionSummary(
             id=record.id,
+            brief_version_id=record.brief_version_id,
+            brief_version_number=record.brief_version_number,
+            brief_signature=record.brief_signature,
             question=record.question,
             mode=record.mode,
             session_id=record.session_id,
@@ -1832,6 +1939,9 @@ class ResearchSessionStore:
                 {
                     "session_id": entry.session_id,
                     "exists": entry.exists,
+                    "brief_version_id": entry.brief_version_id,
+                    "brief_version_number": entry.brief_version_number,
+                    "brief_signature": entry.brief_signature,
                     "label": entry.label,
                     "question": entry.question,
                     "query_class": entry.query_class,
@@ -1861,12 +1971,16 @@ class ResearchSessionStore:
         previous_state: ResearchThesisStateSnapshot | None,
         previous_session_id: str | None,
     ) -> tuple[ResearchCollectionTimelineEntry, ResearchThesisStateSnapshot]:
+        record = self._record_with_brief_version_metadata(record)
         current_state = self._thesis_state_snapshot(record)
         current_delta = self._thesis_delta(current_state, previous_state, previous_session_id)
         return (
             ResearchCollectionTimelineEntry(
                 session_id=record.id,
                 exists=True,
+                brief_version_id=record.brief_version_id,
+                brief_version_number=record.brief_version_number,
+                brief_signature=record.brief_signature,
                 label=record.label,
                 question=record.question,
                 query_class=record.query_class,
@@ -1974,7 +2088,13 @@ class ResearchSessionStore:
     def save(self, payload: SaveResearchSessionRequest) -> SavedResearchSession:
         timestamp = _iso_now()
         saved_id = f"rs-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
-        record = self._build_record(saved_id=saved_id, payload=payload, timestamp=timestamp)
+        brief_version_number = self._next_brief_version_number(payload.session_id)
+        record = self._build_record(
+            saved_id=saved_id,
+            payload=payload,
+            timestamp=timestamp,
+            brief_version_number=brief_version_number,
+        )
         self._write_record(record)
         return record
 
@@ -2416,7 +2536,215 @@ class ResearchSessionStore:
         path = self._path_for_id(saved_id)
         if not path.exists():
             return None
-        return self._load_record(path)
+        record = self._load_record(path)
+        if record is None:
+            return None
+        return self._record_with_brief_version_metadata(record)
+
+    def list_brief_versions(
+        self,
+        saved_id: str,
+        *,
+        include_archived: bool = True,
+    ) -> list[ResearchBriefVersionSummary] | None:
+        anchor = self.get(saved_id)
+        if anchor is None:
+            return None
+
+        versions = sorted(
+            self._brief_version_lookup(anchor.session_id).values(),
+            key=lambda item: item.version_number,
+        )
+        if include_archived:
+            return versions
+
+        archived_lookup = {
+            record.id: record.archived
+            for record in self._thread_records_ordered(anchor.session_id)
+        }
+        return [version for version in versions if not archived_lookup.get(version.saved_id, False)]
+
+    def _resolve_brief_version(
+        self,
+        saved_id: str,
+        version_id: str,
+    ) -> tuple[ResearchBriefVersionSummary, SavedResearchSession] | None:
+        anchor = self.get(saved_id)
+        if anchor is None:
+            return None
+
+        version = next(
+            (
+                item
+                for item in self._brief_version_lookup(anchor.session_id).values()
+                if item.version_id == version_id
+            ),
+            None,
+        )
+        if version is None:
+            return None
+
+        record = self.get(version.saved_id)
+        if record is None:
+            return None
+        return version, record
+
+    def get_brief_version(self, saved_id: str, version_id: str) -> ResearchBriefVersionDetail | None:
+        resolved = self._resolve_brief_version(saved_id=saved_id, version_id=version_id)
+        if resolved is None:
+            return None
+
+        version, record = resolved
+        return ResearchBriefVersionDetail(
+            version=version,
+            brief=record.brief,
+        )
+
+    def compare_brief_versions(
+        self,
+        *,
+        saved_id: str,
+        left_version_id: str,
+        right_version_id: str,
+    ) -> ResearchBriefVersionDiff | None:
+        left_resolved = self._resolve_brief_version(saved_id=saved_id, version_id=left_version_id)
+        right_resolved = self._resolve_brief_version(saved_id=saved_id, version_id=right_version_id)
+        if left_resolved is None or right_resolved is None:
+            return None
+
+        left_version, left_record = left_resolved
+        right_version, right_record = right_resolved
+
+        left_bull = {item.claim_id for item in left_record.brief.bull_case}
+        right_bull = {item.claim_id for item in right_record.brief.bull_case}
+        left_bear = {item.claim_id for item in left_record.brief.bear_case}
+        right_bear = {item.claim_id for item in right_record.brief.bear_case}
+        left_risk = {item.claim_id for item in left_record.brief.key_risks}
+        right_risk = {item.claim_id for item in right_record.brief.key_risks}
+
+        left_sources = {f"{source.type}:{source.id}" for source in left_record.brief.sources}
+        right_sources = {f"{source.type}:{source.id}" for source in right_record.brief.sources}
+
+        left_conflicts = {item.conflict_id for item in left_record.brief.signal_conflicts}
+        right_conflicts = {item.conflict_id for item in right_record.brief.signal_conflicts}
+
+        left_derived = {
+            item.indicator_id for item in (left_record.brief.derived_indicators or [])
+        }
+        right_derived = {
+            item.indicator_id for item in (right_record.brief.derived_indicators or [])
+        }
+
+        diff_payload = {
+            "left_version_id": left_version.version_id,
+            "right_version_id": right_version.version_id,
+            "left_saved_id": left_version.saved_id,
+            "right_saved_id": right_version.saved_id,
+            "left_brief_signature": left_version.brief_signature,
+            "right_brief_signature": right_version.brief_signature,
+            "left_snapshot_signature": left_version.snapshot_signature,
+            "right_snapshot_signature": right_version.snapshot_signature,
+            "thesis_changed": left_record.brief.thesis != right_record.brief.thesis,
+            "confidence_changed": left_record.brief.confidence != right_record.brief.confidence,
+            "confidence_delta": right_record.brief.confidence - left_record.brief.confidence,
+            "query_class_changed": left_record.brief.query_class != right_record.brief.query_class,
+            "template_changed": (
+                left_record.brief.template_id != right_record.brief.template_id
+                or left_record.brief.template_title != right_record.brief.template_title
+            ),
+            "follow_up_context_changed": (
+                left_record.brief.follow_up_context != right_record.brief.follow_up_context
+            ),
+            "methodology_changed": (
+                left_record.brief.methodology_summary != right_record.brief.methodology_summary
+            ),
+            "bull_claim_ids_added": sorted(right_bull - left_bull),
+            "bull_claim_ids_removed": sorted(left_bull - right_bull),
+            "bear_claim_ids_added": sorted(right_bear - left_bear),
+            "bear_claim_ids_removed": sorted(left_bear - right_bear),
+            "risk_claim_ids_added": sorted(right_risk - left_risk),
+            "risk_claim_ids_removed": sorted(left_risk - right_risk),
+            "source_refs_added": sorted(right_sources - left_sources),
+            "source_refs_removed": sorted(left_sources - right_sources),
+            "conflict_ids_added": sorted(right_conflicts - left_conflicts),
+            "conflict_ids_removed": sorted(left_conflicts - right_conflicts),
+            "derived_indicator_ids_added": sorted(right_derived - left_derived),
+            "derived_indicator_ids_removed": sorted(left_derived - right_derived),
+        }
+
+        return ResearchBriefVersionDiff(
+            left_version_id=diff_payload["left_version_id"],
+            right_version_id=diff_payload["right_version_id"],
+            left_saved_id=diff_payload["left_saved_id"],
+            right_saved_id=diff_payload["right_saved_id"],
+            left_brief_signature=diff_payload["left_brief_signature"],
+            right_brief_signature=diff_payload["right_brief_signature"],
+            left_snapshot_signature=diff_payload["left_snapshot_signature"],
+            right_snapshot_signature=diff_payload["right_snapshot_signature"],
+            thesis_changed=diff_payload["thesis_changed"],
+            confidence_changed=diff_payload["confidence_changed"],
+            confidence_delta=diff_payload["confidence_delta"],
+            query_class_changed=diff_payload["query_class_changed"],
+            template_changed=diff_payload["template_changed"],
+            follow_up_context_changed=diff_payload["follow_up_context_changed"],
+            methodology_changed=diff_payload["methodology_changed"],
+            bull_claim_ids_added=diff_payload["bull_claim_ids_added"],
+            bull_claim_ids_removed=diff_payload["bull_claim_ids_removed"],
+            bear_claim_ids_added=diff_payload["bear_claim_ids_added"],
+            bear_claim_ids_removed=diff_payload["bear_claim_ids_removed"],
+            risk_claim_ids_added=diff_payload["risk_claim_ids_added"],
+            risk_claim_ids_removed=diff_payload["risk_claim_ids_removed"],
+            source_refs_added=diff_payload["source_refs_added"],
+            source_refs_removed=diff_payload["source_refs_removed"],
+            conflict_ids_added=diff_payload["conflict_ids_added"],
+            conflict_ids_removed=diff_payload["conflict_ids_removed"],
+            derived_indicator_ids_added=diff_payload["derived_indicator_ids_added"],
+            derived_indicator_ids_removed=diff_payload["derived_indicator_ids_removed"],
+            deterministic_signature=self._hash_canonical_payload(diff_payload),
+        )
+
+    def export_brief_version_payload(self, saved_id: str, version_id: str) -> dict[str, Any] | None:
+        detail = self.get_brief_version(saved_id=saved_id, version_id=version_id)
+        if detail is None:
+            return None
+
+        versions = self.list_brief_versions(saved_id, include_archived=True) or []
+        previous_version_id: str | None = None
+        for idx, version in enumerate(versions):
+            if version.version_id != version_id:
+                continue
+            if idx > 0:
+                previous_version_id = versions[idx - 1].version_id
+            break
+
+        comparison_to_previous = None
+        if previous_version_id is not None:
+            comparison = self.compare_brief_versions(
+                saved_id=saved_id,
+                left_version_id=previous_version_id,
+                right_version_id=version_id,
+            )
+            if comparison is not None:
+                comparison_to_previous = comparison.model_dump(exclude_none=True)
+
+        signature_payload = {
+            "version": detail.version.model_dump(exclude_none=True),
+            "brief": detail.brief.model_dump(exclude_none=True),
+            "version_count": len(versions),
+            "comparison_to_previous": comparison_to_previous,
+        }
+        deterministic_signature = self._hash_canonical_payload(signature_payload)
+
+        return {
+            "schema": "meridian.brief_version_export.v1",
+            "exported_at": _iso_now(),
+            "thread_session_id": detail.version.thread_session_id,
+            "version_count": len(versions),
+            "version": signature_payload["version"],
+            "brief": signature_payload["brief"],
+            "comparison_to_previous": comparison_to_previous,
+            "deterministic_signature": deterministic_signature,
+        }
 
     def get_latest_for_session(self, session_id: str) -> SavedResearchSession | None:
         candidates = [item for item in self.list_sessions(include_archived=True) if item.session_id == session_id]
@@ -2910,6 +3238,7 @@ class ResearchSessionStore:
         return reports
 
     def export_bundle_payload(self, record: SavedResearchSession) -> dict[str, Any]:
+        record = self._record_with_brief_version_metadata(record)
         integrity = self.build_integrity_report(record)
         exported_at = _iso_now()
         snapshot_signature = self._snapshot_signature(record.brief)
@@ -3063,6 +3392,9 @@ class ResearchSessionStore:
             "saved_id": record.id,
             "thread_session_id": record.session_id,
             "query_class": record.query_class,
+            "brief_version_id": record.brief_version_id,
+            "brief_version_number": record.brief_version_number,
+            "brief_signature": record.brief_signature,
             "template_id": record.template_id,
             "template_title": record.template_title,
             "timeline_signature": timeline_payload.get("timeline_signature"),
@@ -3482,6 +3814,9 @@ class ResearchSessionStore:
             f"- Brief Created At: {record.created_at}",
             f"- Saved At: {record.saved_at}",
             f"- Updated At: {record.updated_at}",
+            f"- Brief Version ID: {record.brief_version_id or 'n/a'}",
+            f"- Brief Version Number: {record.brief_version_number if record.brief_version_number is not None else 'n/a'}",
+            f"- Brief Signature: {record.brief_signature or 'n/a'}",
             f"- Canonical Signature: {record.canonical_signature}",
             "",
             "## Thesis",

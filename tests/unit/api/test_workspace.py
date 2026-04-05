@@ -75,6 +75,9 @@ def test_workspace_save_list_get_and_export_roundtrip() -> None:
     assert saved["id"].startswith("rs-")
     assert saved["mode"] == "demo"
     assert saved["session_id"] == thread_id
+    assert saved["brief_version_id"].startswith("bver-")
+    assert saved["brief_version_number"] == 1
+    assert saved["brief_signature"]
     assert saved["canonical_signature"]
     assert saved["template_id"] == "macro_outlook"
     assert saved["template_title"] == "Macro outlook"
@@ -92,6 +95,9 @@ def test_workspace_save_list_get_and_export_roundtrip() -> None:
     listing = listed.json()
     assert listing["count"] == 1
     assert listing["sessions"][0]["id"] == saved["id"]
+    assert listing["sessions"][0]["brief_version_id"] == saved["brief_version_id"]
+    assert listing["sessions"][0]["brief_version_number"] == saved["brief_version_number"]
+    assert listing["sessions"][0]["brief_signature"] == saved["brief_signature"]
     assert listing["sessions"][0]["template_id"] == "macro_outlook"
     assert listing["sessions"][0]["evaluation_passed"] is True
     assert isinstance(listing["sessions"][0]["snapshot_kind_counts"], dict)
@@ -104,6 +110,9 @@ def test_workspace_save_list_get_and_export_roundtrip() -> None:
     loaded_payload = loaded.json()
     brief = ResearchBrief.model_validate(loaded_payload["brief"])
     assert brief.thesis
+    assert loaded_payload["brief_version_id"] == saved["brief_version_id"]
+    assert loaded_payload["brief_version_number"] == saved["brief_version_number"]
+    assert loaded_payload["brief_signature"] == saved["brief_signature"]
     assert len(loaded_payload["trace_events"]) >= 5
     assert loaded_payload["evidence_state"]["active_claim_id"]
 
@@ -112,6 +121,8 @@ def test_workspace_save_list_get_and_export_roundtrip() -> None:
     assert "application/json" in exported_json.headers["content-type"]
     json_payload = exported_json.json()
     assert json_payload["question"] == question
+    assert json_payload["brief_version_id"] == saved["brief_version_id"]
+    assert json_payload["brief_version_number"] == saved["brief_version_number"]
     assert json_payload["brief"]["thesis"]
     assert json_payload["brief"]["signal_conflicts"]
     assert json_payload["trace_events"]
@@ -436,11 +447,17 @@ def test_workspace_thread_timeline_returns_ordered_thesis_evolution() -> None:
     assert first_entry["thesis_state"]["claim_count"] >= 1
     assert first_entry["thesis_delta"]["previous_session_id"] is None
     assert first_entry["thesis_delta"]["delta_signature"]
+    assert first_entry["brief_version_id"]
+    assert first_entry["brief_version_number"] == 1
+    assert first_entry["brief_signature"]
     assert first_entry["template_id"] == "macro_outlook"
 
     assert second_entry["thesis_state"]["thesis"]
     assert second_entry["thesis_delta"]["previous_session_id"] == first_saved["id"]
     assert second_entry["thesis_delta"]["delta_signature"]
+    assert second_entry["brief_version_id"]
+    assert second_entry["brief_version_number"] == 2
+    assert second_entry["brief_signature"]
     assert second_entry["template_id"] == "event_probability_interpretation"
     assert isinstance(second_entry["thesis_delta"]["thesis_changed"], bool)
     assert isinstance(second_entry["thesis_delta"]["confidence_changed"], bool)
@@ -452,6 +469,94 @@ def test_workspace_thread_timeline_returns_ordered_thesis_evolution() -> None:
     timeline_again = client.get(f"/api/v1/research/sessions/{second_saved['id']}/timeline")
     assert timeline_again.status_code == 200
     assert timeline_again.json()["timeline_signature"] == timeline_payload["timeline_signature"]
+
+
+def test_workspace_brief_version_endpoints_list_get_compare_and_export() -> None:
+    thread_id = "wave22-brief-version-thread"
+    first_question = "Create a baseline macro thesis for versioning checks."
+    second_question = "Update this thread with event-probability changes for version diff checks."
+
+    first_events = _collect_events(question=first_question, session_id=thread_id)
+    second_events = _collect_events(question=second_question, session_id=thread_id)
+
+    first_saved_response = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=first_question,
+            session_id=thread_id,
+            events=first_events,
+            brief=first_events[-1]["brief"],
+        ),
+    )
+    second_saved_response = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=second_question,
+            session_id=thread_id,
+            events=second_events,
+            brief=second_events[-1]["brief"],
+        ),
+    )
+    assert first_saved_response.status_code == 200
+    assert second_saved_response.status_code == 200
+
+    first_saved = first_saved_response.json()
+    second_saved = second_saved_response.json()
+
+    versions_response = client.get(f"/api/v1/research/sessions/{second_saved['id']}/versions")
+    assert versions_response.status_code == 200
+    versions_payload = versions_response.json()
+
+    assert versions_payload["count"] == 2
+    assert [item["version_number"] for item in versions_payload["versions"]] == [1, 2]
+    assert [item["saved_id"] for item in versions_payload["versions"]] == [
+        first_saved["id"],
+        second_saved["id"],
+    ]
+    assert all(item["version_id"].startswith("bver-") for item in versions_payload["versions"])
+
+    second_version_id = versions_payload["versions"][1]["version_id"]
+    first_version_id = versions_payload["versions"][0]["version_id"]
+
+    version_detail_response = client.get(
+        f"/api/v1/research/sessions/{second_saved['id']}/versions/{second_version_id}"
+    )
+    assert version_detail_response.status_code == 200
+    version_detail = version_detail_response.json()
+    assert version_detail["version"]["version_id"] == second_version_id
+    assert version_detail["version"]["saved_id"] == second_saved["id"]
+    assert version_detail["brief"]["thesis"]
+
+    version_diff_response = client.get(
+        f"/api/v1/research/sessions/{second_saved['id']}/versions/compare",
+        params={
+            "left_version_id": first_version_id,
+            "right_version_id": second_version_id,
+        },
+    )
+    assert version_diff_response.status_code == 200
+    version_diff = version_diff_response.json()
+    assert version_diff["left_version_id"] == first_version_id
+    assert version_diff["right_version_id"] == second_version_id
+    assert version_diff["left_saved_id"] == first_saved["id"]
+    assert version_diff["right_saved_id"] == second_saved["id"]
+    assert version_diff["deterministic_signature"]
+    assert isinstance(version_diff["thesis_changed"], bool)
+    assert isinstance(version_diff["confidence_changed"], bool)
+
+    version_export_response = client.get(
+        f"/api/v1/research/sessions/{second_saved['id']}/versions/{second_version_id}/export"
+    )
+    assert version_export_response.status_code == 200
+    assert "application/json" in version_export_response.headers["content-type"]
+    assert second_version_id in version_export_response.headers["content-disposition"]
+
+    version_export = version_export_response.json()
+    assert version_export["schema"] == "meridian.brief_version_export.v1"
+    assert version_export["thread_session_id"] == thread_id
+    assert version_export["version_count"] == 2
+    assert version_export["version"]["version_id"] == second_version_id
+    assert version_export["deterministic_signature"]
 
 
 def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:

@@ -169,6 +169,9 @@ Response:
   "sessions": [
     {
       "id": "rs-20260403235959-8f2c1a3d",
+      "brief_version_id": "bver-sess-abcd1234-0001-9f8e7d6c5b",
+      "brief_version_number": 1,
+      "brief_signature": "<sha256>",
       "question": "What does the current yield curve imply for equities?",
       "mode": "demo",
       "session_id": "sess-abcd1234",
@@ -218,7 +221,13 @@ Request body includes:
 - evidence_state (active_claim_id, expanded_source_id)
 - evaluation (optional; server recomputes deterministic report for persistence)
 
-Response is the full saved session record including `id` and `canonical_signature`.
+Response is the full saved session record including:
+
+- `id`
+- `canonical_signature`
+- `brief_version_id`
+- `brief_version_number`
+- `brief_signature`
 
 ### PATCH /api/v1/research/sessions/{saved_id}/rename
 
@@ -515,6 +524,7 @@ Top-level fields:
 - per-section SHA256 signatures and byte inventory
 - integrity/equality checks (session signature parity, integrity recomputation parity, evaluation signature parity, snapshot signature parity)
 - timeline and compare-previous linkage metadata
+- brief version metadata (`brief_version_id`, `brief_version_number`, `brief_signature`)
 
 `files` contains section payloads equivalent to offline artifacts:
 
@@ -651,6 +661,9 @@ Response shape:
     {
       "session_id": "rs-...",
       "exists": true,
+      "brief_version_id": "bver-sess-abcd1234-0001-9f8e7d6c5b",
+      "brief_version_number": 1,
+      "brief_signature": "<sha256>",
       "saved_at": "2026-04-05T00:00:00Z",
       "thesis_state": { "thesis": "...", "confidence": 3, "claim_count": 7 },
       "thesis_delta": {
@@ -668,6 +681,66 @@ Response shape:
   "timeline_signature": "<sha256>"
 }
 ```
+
+### GET /api/v1/research/sessions/{saved_id}/versions
+
+Lists ordered brief versions for the runtime thread associated with `saved_id`.
+
+Query parameters:
+
+- `include_archived`: optional boolean (default `true`)
+
+Response includes:
+
+- `versions[]` ordered by `version_number`
+- `count`
+
+Each version summary includes:
+
+- `version_id`
+- `version_number`
+- `saved_id`
+- `thread_session_id`
+- `question`
+- `query_class`
+- `template_id`, `template_title`
+- `created_at`, `saved_at`
+- `brief_signature`
+- `canonical_signature`
+- `snapshot_signature`
+
+### GET /api/v1/research/sessions/{saved_id}/versions/{version_id}
+
+Returns a single brief version detail payload:
+
+- `version` (summary metadata)
+- `brief` (full `ResearchBrief` payload for that version)
+
+### GET /api/v1/research/sessions/{saved_id}/versions/compare
+
+Returns an explicit deterministic diff between two brief versions in the same thread.
+
+Query parameters:
+
+- `left_version_id`
+- `right_version_id`
+
+Response highlights:
+
+- thesis and confidence change flags
+- confidence delta
+- query/template/follow-up/methodology change flags
+- claim/source/conflict/derived-indicator additions and removals
+- `deterministic_signature`
+
+### GET /api/v1/research/sessions/{saved_id}/versions/{version_id}/export
+
+Exports a version-scoped JSON payload (`meridian.brief_version_export.v1`) including:
+
+- selected version metadata
+- full brief payload
+- optional compare-to-previous version diff
+- deterministic export signature
 
 ### PATCH /api/v1/collections/{collection_id}
 

@@ -267,6 +267,9 @@ export type ResearchBrief = {
 
 export type SavedResearchSessionSummary = {
   id: string
+  brief_version_id?: string | null
+  brief_version_number?: number | null
+  brief_signature?: string | null
   question: string
   mode: 'demo' | 'live'
   session_id: string
@@ -348,6 +351,9 @@ export type ResearchThesisDelta = {
 export type ResearchCollectionTimelineEntry = {
   session_id: string
   exists: boolean
+  brief_version_id?: string | null
+  brief_version_number?: number | null
+  brief_signature?: string | null
   label?: string | null
   question?: string | null
   query_class?: ResearchBrief['query_class']
@@ -379,6 +385,58 @@ export type ResearchThreadTimelineDetail = {
   thread_session_id: string
   timeline: ResearchCollectionTimelineEntry[]
   timeline_signature: string
+}
+
+export type ResearchBriefVersionSummary = {
+  version_id: string
+  version_number: number
+  saved_id: string
+  thread_session_id: string
+  question: string
+  query_class?: ResearchBrief['query_class']
+  template_id?: ResearchTemplateId | null
+  template_title?: string | null
+  created_at: string
+  saved_at: string
+  brief_signature: string
+  canonical_signature: string
+  snapshot_signature?: string | null
+}
+
+export type ResearchBriefVersionDetail = {
+  version: ResearchBriefVersionSummary
+  brief: ResearchBrief
+}
+
+export type ResearchBriefVersionDiff = {
+  left_version_id: string
+  right_version_id: string
+  left_saved_id: string
+  right_saved_id: string
+  left_brief_signature: string
+  right_brief_signature: string
+  left_snapshot_signature?: string | null
+  right_snapshot_signature?: string | null
+  thesis_changed: boolean
+  confidence_changed: boolean
+  confidence_delta: number
+  query_class_changed: boolean
+  template_changed: boolean
+  follow_up_context_changed: boolean
+  methodology_changed: boolean
+  bull_claim_ids_added: string[]
+  bull_claim_ids_removed: string[]
+  bear_claim_ids_added: string[]
+  bear_claim_ids_removed: string[]
+  risk_claim_ids_added: string[]
+  risk_claim_ids_removed: string[]
+  source_refs_added: string[]
+  source_refs_removed: string[]
+  conflict_ids_added: string[]
+  conflict_ids_removed: string[]
+  derived_indicator_ids_added: string[]
+  derived_indicator_ids_removed: string[]
+  deterministic_signature: string
 }
 
 export type SessionRecaptureLineage = {

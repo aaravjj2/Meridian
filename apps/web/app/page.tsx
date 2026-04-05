@@ -19,6 +19,8 @@ import type {
   ResearchRegressionPackRun,
   ResearchRegressionPackSummary,
   ResearchBrief,
+  ResearchBriefVersionDiff,
+  ResearchBriefVersionSummary,
   ResearchReviewChecklist,
   ResearchTemplateDefinition,
   ResearchTemplateId,
@@ -659,6 +661,53 @@ async function getThreadTimeline(savedId: string): Promise<ResearchThreadTimelin
   return (await response.json()) as ResearchThreadTimelineDetail
 }
 
+async function listBriefVersions(
+  savedId: string,
+  options?: { includeArchived?: boolean }
+): Promise<ResearchBriefVersionSummary[]> {
+  const params = new URLSearchParams()
+  if (options?.includeArchived !== false) {
+    params.set('include_archived', 'true')
+  }
+  const query = params.toString()
+  const response = await fetch(
+    `/api/v1/research/sessions/${encodeURIComponent(savedId)}/versions${query ? `?${query}` : ''}`
+  )
+  if (!response.ok) {
+    throw new Error(`Failed to list brief versions: ${response.status}`)
+  }
+  const payload = (await response.json()) as { versions?: ResearchBriefVersionSummary[] }
+  return payload.versions ?? []
+}
+
+async function compareBriefVersions(
+  savedId: string,
+  leftVersionId: string,
+  rightVersionId: string
+): Promise<ResearchBriefVersionDiff> {
+  const params = new URLSearchParams({
+    left_version_id: leftVersionId,
+    right_version_id: rightVersionId,
+  })
+  const response = await fetch(
+    `/api/v1/research/sessions/${encodeURIComponent(savedId)}/versions/compare?${params.toString()}`
+  )
+  if (!response.ok) {
+    throw new Error(`Failed to compare brief versions: ${response.status}`)
+  }
+  return (await response.json()) as ResearchBriefVersionDiff
+}
+
+async function exportBriefVersion(savedId: string, versionId: string): Promise<Response> {
+  const response = await fetch(
+    `/api/v1/research/sessions/${encodeURIComponent(savedId)}/versions/${encodeURIComponent(versionId)}/export`
+  )
+  if (!response.ok) {
+    throw new Error(`Failed to export brief version: ${response.status}`)
+  }
+  return response
+}
+
 async function listCollections(): Promise<ResearchCollectionSummary[]> {
   const response = await fetch('/api/v1/collections')
   if (!response.ok) {
@@ -841,6 +890,11 @@ export default function HomePage() {
   const [threadTimelineState, setThreadTimelineState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [threadTimelineError, setThreadTimelineError] = useState('')
   const [threadTimeline, setThreadTimeline] = useState<ResearchThreadTimelineDetail | null>(null)
+  const [briefVersionState, setBriefVersionState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [briefVersionError, setBriefVersionError] = useState('')
+  const [briefVersions, setBriefVersions] = useState<ResearchBriefVersionSummary[]>([])
+  const [briefVersionBusy, setBriefVersionBusy] = useState(false)
+  const [briefVersionDiff, setBriefVersionDiff] = useState<ResearchBriefVersionDiff | null>(null)
   const [evidenceState, setEvidenceState] = useState<EvidenceNavigationState>(EMPTY_EVIDENCE_STATE)
   const [evaluation, setEvaluation] = useState<ResearchEvaluationReport | null>(null)
   const [evidenceHydrationKey, setEvidenceHydrationKey] = useState(0)
@@ -1052,6 +1106,34 @@ export default function HomePage() {
   useEffect(() => {
     void refreshThreadTimeline(activeSavedSessionId)
   }, [activeSavedSessionId, refreshThreadTimeline])
+
+  const refreshBriefVersions = useCallback(async (savedId: string | null) => {
+    if (!savedId) {
+      setBriefVersions([])
+      setBriefVersionDiff(null)
+      setBriefVersionError('')
+      setBriefVersionState('idle')
+      return
+    }
+
+    setBriefVersionState('loading')
+    setBriefVersionError('')
+    setBriefVersionDiff(null)
+    try {
+      const versions = await listBriefVersions(savedId, { includeArchived: true })
+      setBriefVersions(versions)
+      setBriefVersionState('ready')
+    } catch (versionError) {
+      setBriefVersions([])
+      setBriefVersionDiff(null)
+      setBriefVersionState('error')
+      setBriefVersionError(versionError instanceof Error ? versionError.message : 'Failed to load brief versions')
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshBriefVersions(activeSavedSessionId)
+  }, [activeSavedSessionId, refreshBriefVersions])
 
   const createCollectionByPayload = useCallback(
     async (payload: { title: string; summary?: string | null; notes?: string | null }) => {
@@ -1442,6 +1524,57 @@ export default function HomePage() {
     }
   }, [])
 
+  const compareBriefVersionsById = useCallback(
+    async (leftVersionId: string, rightVersionId: string) => {
+      if (!activeSavedSessionId) {
+        setWorkspaceStatus('Select or reopen a saved session before comparing brief versions.')
+        return
+      }
+      if (!leftVersionId || !rightVersionId) {
+        setWorkspaceStatus('Select two brief versions before comparing.')
+        return
+      }
+      if (leftVersionId === rightVersionId) {
+        setWorkspaceStatus('Select two different brief versions to compare.')
+        return
+      }
+
+      setBriefVersionBusy(true)
+      try {
+        const diff = await compareBriefVersions(activeSavedSessionId, leftVersionId, rightVersionId)
+        setBriefVersionDiff(diff)
+        setWorkspaceStatus(`Compared brief versions ${leftVersionId} vs ${rightVersionId}`)
+      } catch (versionError) {
+        setWorkspaceStatus(versionError instanceof Error ? versionError.message : 'Brief version compare failed')
+      } finally {
+        setBriefVersionBusy(false)
+      }
+    },
+    [activeSavedSessionId]
+  )
+
+  const exportBriefVersionById = useCallback(
+    async (versionId: string) => {
+      if (!activeSavedSessionId) {
+        setWorkspaceStatus('Select or reopen a saved session before exporting a brief version.')
+        return
+      }
+
+      setExportBusy(true)
+      try {
+        const response = await exportBriefVersion(activeSavedSessionId, versionId)
+        const blob = await response.blob()
+        triggerDownload(response, blob)
+        setWorkspaceStatus(`Exported brief version ${versionId}`)
+      } catch (versionError) {
+        setWorkspaceStatus(versionError instanceof Error ? versionError.message : 'Brief version export failed')
+      } finally {
+        setExportBusy(false)
+      }
+    },
+    [activeSavedSessionId]
+  )
+
   const verifySessionIntegrityById = useCallback(async (savedId: string) => {
     setIntegrityBusy(true)
     try {
@@ -1727,6 +1860,11 @@ export default function HomePage() {
               threadTimelineState={threadTimelineState}
               threadTimelineError={threadTimelineError}
               threadTimeline={threadTimeline}
+              briefVersionState={briefVersionState}
+              briefVersionError={briefVersionError}
+              briefVersionBusy={briefVersionBusy}
+              briefVersions={briefVersions}
+              briefVersionDiff={briefVersionDiff}
               onSearchChange={setWorkspaceSearch}
               onToggleIncludeArchived={setIncludeArchived}
               onQueryClassFilterChange={setQueryClassFilter}
@@ -1759,6 +1897,15 @@ export default function HomePage() {
               }}
               onThreadTimelineRefresh={() => {
                 void refreshThreadTimeline(activeSavedSessionId)
+              }}
+              onBriefVersionRefresh={() => {
+                void refreshBriefVersions(activeSavedSessionId)
+              }}
+              onBriefVersionCompare={(leftVersionId, rightVersionId) => {
+                void compareBriefVersionsById(leftVersionId, rightVersionId)
+              }}
+              onBriefVersionExport={(versionId) => {
+                void exportBriefVersionById(versionId)
               }}
               onSaveCurrent={() => {
                 void saveCurrentSession()

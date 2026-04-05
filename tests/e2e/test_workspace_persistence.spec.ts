@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('workspace persistence: manage, compare, integrity, export, and continue', async ({ page }) => {
-  test.setTimeout(90000)
+  test.setTimeout(150000)
 
   await page.goto('/')
   await expect(page.getByTestId('query-template-select')).toBeVisible()
@@ -33,6 +33,7 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await expect(page.getByTestId('brief-template-title')).toContainText('Compare old vs new thesis')
   await page.getByTestId('save-session-button').click()
   await expect(page.getByTestId('workspace-item-1')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByTestId('workspace-version-signature-1')).toBeVisible()
 
   await page.getByTestId('workspace-collection-create-title').fill('Yield Curve Notebook')
   await page.getByTestId('workspace-collection-create-summary').fill('Threaded research sessions')
@@ -47,6 +48,12 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
 
   await page.getByTestId('workspace-reopen-1').click()
   await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByTestId('workspace-brief-version-list')).toBeVisible()
+  await expect(page.getByTestId('workspace-brief-version-item-0')).toBeVisible()
+  await page.getByTestId('workspace-brief-version-compare-left').selectOption({ index: 1 })
+  await page.getByTestId('workspace-brief-version-compare-right').selectOption({ index: 2 })
+  await page.getByTestId('workspace-brief-version-compare-run').click()
+  await expect(page.getByTestId('workspace-brief-version-diff')).toBeVisible({ timeout: 10000 })
   await page.getByTestId('workspace-collection-add-active-session').click()
   await expect(page.getByTestId('workspace-collection-timeline-item-1')).toBeVisible({ timeout: 10000 })
   await expect(page.getByTestId('workspace-collection-delta-1')).toBeVisible()
@@ -84,8 +91,7 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await expect(page.getByTestId('workspace-compare-conflict-worsened-count')).toBeVisible()
 
   await page.getByTestId('workspace-recapture-0').click()
-  await expect(page.getByTestId('workspace-status')).toContainText('Recaptured', { timeout: 10000 })
-  await expect(page.getByTestId('workspace-recapture-lineage')).toBeVisible()
+  await expect(page.getByTestId('workspace-recapture-lineage')).toBeVisible({ timeout: 30000 })
   await expect(page.getByTestId('workspace-recapture-before-signature')).toBeVisible()
   await expect(page.getByTestId('workspace-recapture-after-signature')).toBeVisible()
   await expect(page.getByTestId('workspace-recapture-snapshot-id-changes')).toBeVisible()

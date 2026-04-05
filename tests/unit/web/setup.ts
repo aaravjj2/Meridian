@@ -55,6 +55,85 @@ export const server = setupServer(
       count: 0,
     })
   ),
+  http.get('/api/v1/research/sessions/:savedId/versions', () =>
+    HttpResponse.json({
+      versions: [],
+      count: 0,
+    })
+  ),
+  http.get('/api/v1/research/sessions/:savedId/versions/compare', () =>
+    HttpResponse.json({
+      left_version_id: 'bver-left',
+      right_version_id: 'bver-right',
+      left_saved_id: 'rs-left',
+      right_saved_id: 'rs-right',
+      left_brief_signature: 'left-sig',
+      right_brief_signature: 'right-sig',
+      thesis_changed: false,
+      confidence_changed: false,
+      confidence_delta: 0,
+      query_class_changed: false,
+      template_changed: false,
+      follow_up_context_changed: false,
+      methodology_changed: false,
+      bull_claim_ids_added: [],
+      bull_claim_ids_removed: [],
+      bear_claim_ids_added: [],
+      bear_claim_ids_removed: [],
+      risk_claim_ids_added: [],
+      risk_claim_ids_removed: [],
+      source_refs_added: [],
+      source_refs_removed: [],
+      conflict_ids_added: [],
+      conflict_ids_removed: [],
+      derived_indicator_ids_added: [],
+      derived_indicator_ids_removed: [],
+      deterministic_signature: 'brief-version-diff-default',
+    })
+  ),
+  http.get('/api/v1/research/sessions/:savedId/versions/:versionId', ({ params }) =>
+    HttpResponse.json({
+      version: {
+        version_id: params.versionId,
+        version_number: 1,
+        saved_id: params.savedId,
+        thread_session_id: 'thread-default',
+        question: 'default question',
+        created_at: '2026-04-05T00:00:00Z',
+        saved_at: '2026-04-05T00:00:00Z',
+        brief_signature: 'brief-sig-default',
+        canonical_signature: 'canon-default',
+      },
+      brief: {
+        question: 'default question',
+        thesis: 'default thesis',
+        bull_case: [],
+        bear_case: [],
+        key_risks: [],
+        confidence: 3,
+        confidence_rationale: 'default rationale',
+        sources: [],
+        created_at: '2026-04-05T00:00:00Z',
+        trace_steps: [],
+      },
+    })
+  ),
+  http.get('/api/v1/research/sessions/:savedId/versions/:versionId/export', ({ params }) =>
+    HttpResponse.json(
+      {
+        schema: 'meridian.brief_version_export.v1',
+        version: {
+          version_id: params.versionId,
+          saved_id: params.savedId,
+        },
+      },
+      {
+        headers: {
+          'content-disposition': `attachment; filename=${String(params.versionId)}.brief.json`,
+        },
+      }
+    )
+  ),
   http.post('/api/v1/research/sessions/regression/packs', async ({ request }) => {
     const body = (await request.json()) as { title?: string; description?: string | null; session_ids?: string[] }
     return HttpResponse.json({

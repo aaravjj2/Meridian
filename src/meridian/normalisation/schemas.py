@@ -188,6 +188,66 @@ class ResearchReviewChecklist(BaseModel):
     items: list[ResearchReviewChecklistItem] = Field(default_factory=list)
 
 
+class ResearchBriefVersionSummary(BaseModel):
+    version_id: str
+    version_number: int = Field(ge=1)
+    saved_id: str
+    thread_session_id: str
+    question: str
+    query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None = None
+    template_id: ResearchTemplateId | None = None
+    template_title: str | None = None
+    created_at: str
+    saved_at: str
+    brief_signature: str
+    canonical_signature: str
+    snapshot_signature: str | None = None
+
+    @field_validator("version_id")
+    @classmethod
+    def ensure_version_id(cls, value: str) -> str:
+        version_id = value.strip()
+        if not version_id.startswith("bver-"):
+            raise ValueError("version_id must start with 'bver-'")
+        return version_id
+
+
+class ResearchBriefVersionDetail(BaseModel):
+    version: ResearchBriefVersionSummary
+    brief: "ResearchBrief"
+
+
+class ResearchBriefVersionDiff(BaseModel):
+    left_version_id: str
+    right_version_id: str
+    left_saved_id: str
+    right_saved_id: str
+    left_brief_signature: str
+    right_brief_signature: str
+    left_snapshot_signature: str | None = None
+    right_snapshot_signature: str | None = None
+    thesis_changed: bool
+    confidence_changed: bool
+    confidence_delta: int
+    query_class_changed: bool
+    template_changed: bool
+    follow_up_context_changed: bool
+    methodology_changed: bool
+    bull_claim_ids_added: list[str] = Field(default_factory=list)
+    bull_claim_ids_removed: list[str] = Field(default_factory=list)
+    bear_claim_ids_added: list[str] = Field(default_factory=list)
+    bear_claim_ids_removed: list[str] = Field(default_factory=list)
+    risk_claim_ids_added: list[str] = Field(default_factory=list)
+    risk_claim_ids_removed: list[str] = Field(default_factory=list)
+    source_refs_added: list[str] = Field(default_factory=list)
+    source_refs_removed: list[str] = Field(default_factory=list)
+    conflict_ids_added: list[str] = Field(default_factory=list)
+    conflict_ids_removed: list[str] = Field(default_factory=list)
+    derived_indicator_ids_added: list[str] = Field(default_factory=list)
+    derived_indicator_ids_removed: list[str] = Field(default_factory=list)
+    deterministic_signature: str
+
+
 class SignalConflict(BaseModel):
     conflict_id: str
     title: str
@@ -623,6 +683,9 @@ class ResearchThesisDelta(BaseModel):
 class ResearchCollectionTimelineEntry(BaseModel):
     session_id: str
     exists: bool
+    brief_version_id: str | None = None
+    brief_version_number: int | None = Field(default=None, ge=1)
+    brief_signature: str | None = None
     label: str | None = None
     question: str | None = None
     query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None = None
@@ -663,6 +726,9 @@ class SessionBundleManifest(BaseModel):
     saved_id: str
     thread_session_id: str
     query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None = None
+    brief_version_id: str | None = None
+    brief_version_number: int | None = Field(default=None, ge=1)
+    brief_signature: str | None = None
     timeline_signature: str | None = None
     compare_previous_saved_id: str | None = None
     deterministic_signature: str

@@ -103,6 +103,9 @@ const briefFixture = {
 
 const savedSummary = {
   id: 'rs-saved-001',
+  brief_version_id: 'bver-sess-saved-thread-0001-abc1234567',
+  brief_version_number: 1,
+  brief_signature: 'brief-sig-001',
   question: 'Saved macro question',
   mode: 'demo',
   session_id: 'sess-saved-thread',
@@ -145,6 +148,9 @@ const savedSummary = {
 
 const savedSummaryTwo = {
   id: 'rs-saved-002',
+  brief_version_id: 'bver-sess-saved-thread-0002-def4567890',
+  brief_version_number: 2,
+  brief_signature: 'brief-sig-002',
   question: 'Second saved macro question',
   mode: 'demo',
   session_id: 'sess-saved-thread-2',
@@ -313,6 +319,9 @@ const collectionDetail = {
     {
       session_id: savedSummary.id,
       exists: true,
+      brief_version_id: savedSummary.brief_version_id,
+      brief_version_number: savedSummary.brief_version_number,
+      brief_signature: savedSummary.brief_signature,
       label: savedSummary.label,
       question: savedSummary.question,
       query_class: savedSummary.query_class,
@@ -402,6 +411,40 @@ describe('HomePage workspace persistence', () => {
   it('reopens saved session, then saves and exports from completed state', async () => {
     let saveCalls = 0
     const exportFormats: string[] = []
+    const exportedVersionIds: string[] = []
+
+    const briefVersions = [
+      {
+        version_id: 'bver-sess-saved-thread-0001-abc1234567',
+        version_number: 1,
+        saved_id: savedSummary.id,
+        thread_session_id: savedSummary.session_id,
+        question: savedSummary.question,
+        query_class: savedSummary.query_class,
+        template_id: 'macro_outlook',
+        template_title: 'Macro outlook',
+        created_at: '2026-04-03T10:00:00Z',
+        saved_at: '2026-04-03T10:05:00Z',
+        brief_signature: 'brief-sig-001',
+        canonical_signature: 'abc123',
+        snapshot_signature: 'snap-sig-abc123',
+      },
+      {
+        version_id: 'bver-sess-saved-thread-0002-def4567890',
+        version_number: 2,
+        saved_id: 'rs-saved-copy',
+        thread_session_id: savedSummary.session_id,
+        question: 'Updated macro question',
+        query_class: 'macro_outlook',
+        template_id: 'macro_outlook',
+        template_title: 'Macro outlook',
+        created_at: '2026-04-03T10:06:00Z',
+        saved_at: '2026-04-03T10:06:00Z',
+        brief_signature: 'brief-sig-002',
+        canonical_signature: 'copy-signature',
+        snapshot_signature: 'snap-sig-def456',
+      },
+    ]
 
     server.use(
       http.get('/api/v1/regime', () =>
@@ -425,6 +468,58 @@ describe('HomePage workspace persistence', () => {
         return HttpResponse.json(savedRecord)
       }),
       http.get('/api/v1/research/sessions/:savedId/timeline', () => HttpResponse.json(threadTimelineSingle)),
+      http.get('/api/v1/research/sessions/:savedId/versions', () =>
+        HttpResponse.json({ versions: briefVersions, count: briefVersions.length })
+      ),
+      http.get('/api/v1/research/sessions/:savedId/versions/compare', ({ request }) => {
+        const params = new URL(request.url).searchParams
+        return HttpResponse.json({
+          left_version_id: params.get('left_version_id') ?? briefVersions[0].version_id,
+          right_version_id: params.get('right_version_id') ?? briefVersions[1].version_id,
+          left_saved_id: briefVersions[0].saved_id,
+          right_saved_id: briefVersions[1].saved_id,
+          left_brief_signature: briefVersions[0].brief_signature,
+          right_brief_signature: briefVersions[1].brief_signature,
+          left_snapshot_signature: briefVersions[0].snapshot_signature,
+          right_snapshot_signature: briefVersions[1].snapshot_signature,
+          thesis_changed: true,
+          confidence_changed: true,
+          confidence_delta: 1,
+          query_class_changed: false,
+          template_changed: false,
+          follow_up_context_changed: true,
+          methodology_changed: false,
+          bull_claim_ids_added: ['bull-3-easing-pricing-support'],
+          bull_claim_ids_removed: [],
+          bear_claim_ids_added: [],
+          bear_claim_ids_removed: [],
+          risk_claim_ids_added: [],
+          risk_claim_ids_removed: [],
+          source_refs_added: ['market:KXFEDCUT-H1-2026'],
+          source_refs_removed: [],
+          conflict_ids_added: [],
+          conflict_ids_removed: [],
+          derived_indicator_ids_added: [],
+          derived_indicator_ids_removed: [],
+          deterministic_signature: 'brief-version-diff-001',
+        })
+      }),
+      http.get('/api/v1/research/sessions/:savedId/versions/:versionId/export', ({ params }) => {
+        exportedVersionIds.push(String(params.versionId))
+        return HttpResponse.json(
+          {
+            schema: 'meridian.brief_version_export.v1',
+            version: {
+              version_id: params.versionId,
+            },
+          },
+          {
+            headers: {
+              'content-disposition': `attachment; filename=${String(params.versionId)}.brief.json`,
+            },
+          }
+        )
+      }),
       http.post('/api/v1/research/sessions', async ({ request }) => {
         saveCalls += 1
         const body = (await request.json()) as Record<string, unknown>
@@ -475,11 +570,29 @@ describe('HomePage workspace persistence', () => {
     expect(await screen.findByTestId('brief-complete')).toBeInTheDocument()
     expect(await screen.findByTestId('workspace-thread-signature')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-thread-timeline-item-0')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-thread-version-0')).toBeInTheDocument()
+    expect(await screen.findByTestId('workspace-brief-version-list')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-brief-version-item-0')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-brief-version-id-0')).toHaveTextContent('bver-sess-saved-thread-0001')
     expect(screen.getByTestId('workspace-thread-delta-0')).toBeInTheDocument()
     expect(screen.getByTestId('trace-step-0')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('claim-link-bull-1-inversion-easing'))
     expect(screen.getByTestId('evidence-drilldown')).toBeInTheDocument()
     expect(screen.getByTestId('active-claim-id')).toHaveTextContent('bull-1-inversion-easing')
+
+    fireEvent.change(screen.getByTestId('workspace-brief-version-compare-left'), {
+      target: { value: briefVersions[0].version_id },
+    })
+    fireEvent.change(screen.getByTestId('workspace-brief-version-compare-right'), {
+      target: { value: briefVersions[1].version_id },
+    })
+    fireEvent.click(screen.getByTestId('workspace-brief-version-compare-run'))
+    expect(await screen.findByTestId('workspace-brief-version-diff')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-brief-version-export-0'))
+    await waitFor(() => {
+      expect(exportedVersionIds).toContain(briefVersions[0].version_id)
+    })
 
     fireEvent.click(screen.getByTestId('save-session-button'))
     await waitFor(() => {

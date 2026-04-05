@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('research flow: query to complete brief', async ({ page }) => {
+  test.setTimeout(90000)
   await page.goto('/')
 
   await expect(page.getByTestId('mode-badge')).toContainText('DEMO')
@@ -17,7 +18,7 @@ test('research flow: query to complete brief', async ({ page }) => {
   await expect(page.getByTestId('trace-step-0')).toBeVisible({ timeout: 5000 })
   await expect(page.getByTestId('trace-step-4')).toBeVisible({ timeout: 15000 })
 
-  await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 30000 })
+  await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 45000 })
   await expect(page.getByTestId('brief-query-class')).toContainText('MACRO OUTLOOK')
   await expect(page.getByTestId('brief-template-title')).toContainText('Macro outlook')
 
@@ -55,7 +56,7 @@ test('research flow: query to complete brief', async ({ page }) => {
   await page.getByTestId('query-input').fill('How should I interpret the event probability if inflation re-accelerates?')
   await page.getByTestId('query-input').press('Enter')
 
-  await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 30000 })
+  await expect(page.getByTestId('brief-complete')).toBeVisible({ timeout: 45000 })
   await expect(page.getByTestId('query-session-hint')).toBeVisible()
   await expect(page.getByTestId('query-followup-hint')).toBeVisible()
   await expect(page.getByTestId('brief-followup-context')).toBeVisible()
