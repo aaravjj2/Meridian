@@ -1,0 +1,46 @@
+{
+  "wave": 21,
+  "title": "Derived Indicators Layer",
+  "generated_at": "2026-04-05T00:00:00Z",
+  "status": "complete",
+  "git_sha": "TBD",
+  "validation": {
+    "typescript": { "passed": true, "errors": 0 },
+    "frontend_unit": { "passed": true, "total": 20, "failed": 0 },
+    "backend_unit": { "passed": true, "total": 99, "failed": 0 },
+    "e2e": { "passed": true, "total": 6, "failed": 0, "retries": 0 }
+  },
+  "deployment": {
+    "vercel": {
+      "url": "https://meridian-brown.vercel.app",
+      "status": "live",
+      "verified_at": "2026-04-05T00:00:00Z"
+    },
+    "railway": {
+      "status": "blocked",
+      "reason": "free plan resource limit exceeded"
+    }
+  },
+  "files": {
+    "backend": [
+      "src/meridian/normalisation/schemas.py",
+      "apps/api/routers/research.py"
+    ],
+    "frontend": [
+      "apps/web/components/Terminal/types.ts",
+      "apps/web/components/Terminal/DerivedIndicatorPanel.tsx",
+      "apps/web/components/Terminal/ResearchPanel.tsx"
+    ],
+    "tests": [
+      "tests/unit/api/test_derived_indicators.py",
+      "tests/unit/web/DerivedIndicatorPanel.test.tsx"
+    ]
+  },
+  "artifacts": {
+    "screenshots": [
+      "screenshots/01-homepage.png"
+    ],
+    "test_results": "test-results/",
+    "playwright_report": "playwright-report/"
+  }
+}

@@ -17,6 +17,8 @@ from pydantic import BaseModel, Field
 from meridian.agent.react import ResearchAgent
 from meridian.agent.templates import list_research_templates, resolve_research_template
 from meridian.normalisation.schemas import (
+    DerivedIndicator,
+    DerivedIndicatorProvenance,
     ResearchBrief,
     ResearchTemplateDefinition,
     ResearchTemplateId,
@@ -137,6 +139,368 @@ def _cache_lineage_from_snapshot_kind(snapshot_kind: str) -> str:
     if snapshot_kind == "derived":
         return "derived"
     return "unknown"
+
+
+def _state_label_from_provenance(snapshot_kind: str, cache_lineage: str) -> str:
+    if snapshot_kind == "fixture" or cache_lineage == "fixture":
+        return "fixture"
+    if snapshot_kind == "cache" or cache_lineage == "cache":
+        return "cached"
+    if snapshot_kind == "live_capture" or cache_lineage == "fresh_pull":
+        return "live"
+    if snapshot_kind == "derived" or cache_lineage == "derived":
+        return "derived"
+    return "unknown"
+
+
+def _compute_rate_of_change_indicators(
+    sources: list[dict[str, Any]],
+    mode: str,
+    captured_at: str,
+) -> list[DerivedIndicator]:
+    indicators = []
+
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+
+        source_type = source.get("type")
+        source_id = source.get("id")
+        source_ref = f"{source_type}:{source_id}"
+        preview = source.get("preview")
+
+        if not isinstance(preview, dict):
+            continue
+
+        points = preview.get("points")
+        if not isinstance(points, list) or len(points) < 2:
+            continue
+
+        try:
+            latest_point = points[-1]
+            previous_point = points[-2]
+
+            if not isinstance(latest_point, dict) or not isinstance(previous_point, dict):
+                continue
+
+            latest_value = float(latest_point.get("value", 0))
+            previous_value = float(previous_point.get("value", 0))
+
+            if previous_value == 0:
+                continue
+
+            rate_of_change = ((latest_value - previous_value) / abs(previous_value)) * 100
+
+            indicator_id = f"ind-roc-{source_type}-{source_id}-{hashlib.sha256(source_ref.encode()).hexdigest()[:8]}"
+
+            snapshot_kind = "unknown"
+            snapshot_id = None
+            provenance = source.get("provenance")
+            if isinstance(provenance, dict):
+                snapshot_info = provenance.get("snapshot")
+                if isinstance(snapshot_info, dict):
+                    snapshot_kind = snapshot_info.get("snapshot_kind", "unknown")
+                    snapshot_id = snapshot_info.get("snapshot_id")
+
+            reasoning = f"Rate of change computed from {previous_value:.2f} to {latest_value:.2f} over most recent period"
+            if abs(rate_of_change) > 5:
+                reasoning += " (significant movement)"
+            elif abs(rate_of_change) > 1:
+                reasoning += " (moderate movement)"
+
+            indicator_signature_payload = {
+                "indicator_id": indicator_id,
+                "source_ref": source_ref,
+                "rate_of_change": round(rate_of_change, 2),
+                "computation_timestamp": captured_at,
+            }
+            deterministic_signature = hashlib.sha256(
+                json.dumps(indicator_signature_payload, sort_keys=True).encode()
+            ).hexdigest()
+
+            indicator = DerivedIndicator(
+                indicator_id=indicator_id,
+                title=f"{source_type.upper()} Rate of Change",
+                value=round(rate_of_change, 2),
+                unit="%",
+                display_hint="percentage_change_from_previous_period",
+                computation_kind="rate_of_change",
+                source_refs=[source_ref],
+                snapshot_id=snapshot_id,
+                snapshot_kind=snapshot_kind,
+                computation_timestamp=captured_at,
+                observed_at=latest_point.get("date"),
+                deterministic=(mode == "demo" and snapshot_kind == "fixture") or (snapshot_kind == "fixture"),
+                reasoning=reasoning,
+                deterministic_signature=deterministic_signature,
+            )
+            indicators.append(indicator)
+        except (ValueError, TypeError, KeyError):
+            continue
+
+    return indicators
+
+
+def _compute_spread_indicators(
+    brief: dict[str, Any],
+    sources: list[dict[str, Any]],
+    mode: str,
+    captured_at: str,
+) -> list[DerivedIndicator]:
+    indicators = []
+
+    bull_claims = brief.get("bull_case", [])
+    bear_claims = brief.get("bear_case", [])
+
+    if not isinstance(bull_claims, list) or not isinstance(bear_claims, list):
+        return indicators
+
+    bull_count = len(bull_claims)
+    bear_count = len(bear_claims)
+    total_claims = bull_count + bear_count
+
+    if total_claims == 0:
+        return indicators
+
+    spread = abs(bull_count - bear_count)
+    spread_ratio = spread / total_claims if total_claims > 0 else 0
+
+    indicator_id = f"ind-spread-claims-{hashlib.sha256(captured_at.encode()).hexdigest()[:8]}"
+
+    source_refs = {f"{s.get('type')}:{s.get('id')}" for s in sources if isinstance(s, dict)}
+
+    reasoning = f"Claim spread: {bull_count} bull vs {bear_count} bear (spread of {spread})"
+    if spread_ratio > 0.3:
+        reasoning += " (strong imbalance)"
+    elif spread_ratio > 0.1:
+        reasoning += " (moderate imbalance)"
+
+    indicator_signature_payload = {
+        "indicator_id": indicator_id,
+        "bull_count": bull_count,
+        "bear_count": bear_count,
+        "spread": spread,
+        "computation_timestamp": captured_at,
+    }
+    deterministic_signature = hashlib.sha256(
+        json.dumps(indicator_signature_payload, sort_keys=True).encode()
+    ).hexdigest()
+
+    indicator = DerivedIndicator(
+        indicator_id=indicator_id,
+        title="Claim Spread Indicator",
+        value=spread_ratio,
+        unit="ratio",
+        display_hint="absolute_difference_normalized_by_total_claims",
+        computation_kind="spread",
+        source_refs=list(source_refs),
+        snapshot_id=None,
+        snapshot_kind="derived",
+        computation_timestamp=captured_at,
+        observed_at=None,
+        deterministic=(mode == "demo"),
+        reasoning=reasoning,
+        deterministic_signature=deterministic_signature,
+    )
+    indicators.append(indicator)
+
+    return indicators
+
+
+def _compute_trend_bucket_indicators(
+    sources: list[dict[str, Any]],
+    mode: str,
+    captured_at: str,
+) -> list[DerivedIndicator]:
+    indicators = []
+
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+
+        source_type = source.get("type")
+        source_id = source.get("id")
+        source_ref = f"{source_type}:{source_id}"
+        preview = source.get("preview")
+
+        if not isinstance(preview, dict):
+            continue
+
+        points = preview.get("points")
+        if not isinstance(points, list) or len(points) < 3:
+            continue
+
+        try:
+            values = []
+            for point in points[-3:]:
+                if isinstance(point, dict) and "value" in point:
+                    values.append(float(point["value"]))
+
+            if len(values) < 3:
+                continue
+
+            changes = [values[i] - values[i-1] for i in range(1, len(values))]
+
+            if all(c > 0 for c in changes):
+                trend = "increasing"
+                trend_score = 1.0
+            elif all(c < 0 for c in changes):
+                trend = "decreasing"
+                trend_score = -1.0
+            elif abs(sum(changes)) < 0.01 * len(values):
+                trend = "stable"
+                trend_score = 0.0
+            else:
+                trend = "volatile"
+                trend_score = 0.5
+
+            indicator_id = f"ind-trend-{source_type}-{source_id}-{hashlib.sha256(source_ref.encode()).hexdigest()[:8]}"
+
+            snapshot_kind = "unknown"
+            snapshot_id = None
+            provenance = source.get("provenance")
+            if isinstance(provenance, dict):
+                snapshot_info = provenance.get("snapshot")
+                if isinstance(snapshot_info, dict):
+                    snapshot_kind = snapshot_info.get("snapshot_kind", "unknown")
+                    snapshot_id = snapshot_info.get("snapshot_id")
+
+            reasoning = f"Time series trend over last {len(changes)} periods: {trend}"
+
+            indicator_signature_payload = {
+                "indicator_id": indicator_id,
+                "source_ref": source_ref,
+                "trend": trend,
+                "trend_score": trend_score,
+                "computation_timestamp": captured_at,
+            }
+            deterministic_signature = hashlib.sha256(
+                json.dumps(indicator_signature_payload, sort_keys=True).encode()
+            ).hexdigest()
+
+            indicator = DerivedIndicator(
+                indicator_id=indicator_id,
+                title=f"{source_type.upper()} Trend Classification",
+                value=trend_score,
+                unit="score",
+                display_hint=f"trend_classification: {trend}",
+                computation_kind="trend_bucket",
+                source_refs=[source_ref],
+                snapshot_id=snapshot_id,
+                snapshot_kind=snapshot_kind,
+                computation_timestamp=captured_at,
+                observed_at=points[-1].get("date") if isinstance(points[-1], dict) else None,
+                deterministic=(mode == "demo" and snapshot_kind == "fixture") or (snapshot_kind == "fixture"),
+                reasoning=reasoning,
+                deterministic_signature=deterministic_signature,
+            )
+            indicators.append(indicator)
+        except (ValueError, TypeError, KeyError):
+            continue
+
+    return indicators
+
+
+def _compute_aggregate_freshness_indicator(
+    sources: list[dict[str, Any]],
+    mode: str,
+    captured_at: str,
+) -> list[DerivedIndicator]:
+    indicators = []
+
+    fresh_count = 0
+    aging_count = 0
+    stale_count = 0
+    unknown_count = 0
+
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+
+        provenance = source.get("provenance")
+        if isinstance(provenance, dict):
+            freshness = provenance.get("freshness", "unknown")
+            if freshness == "fresh":
+                fresh_count += 1
+            elif freshness == "aging":
+                aging_count += 1
+            elif freshness == "stale":
+                stale_count += 1
+            else:
+                unknown_count += 1
+
+    total_count = len(sources)
+    if total_count == 0:
+        return indicators
+
+    fresh_ratio = fresh_count / total_count
+    staleness_index = (fresh_count * 0 + aging_count * 1 + stale_count * 2) / total_count if total_count > 0 else 0
+
+    indicator_id = f"ind-freshness-aggregate-{hashlib.sha256(captured_at.encode()).hexdigest()[:8]}"
+
+    source_refs = [f"{s.get('type')}:{s.get('id')}" for s in sources if isinstance(s, dict)]
+
+    reasoning = f"Aggregate freshness: {fresh_count} fresh, {aging_count} aging, {stale_count} stale out of {total_count} sources"
+    if fresh_ratio >= 0.7:
+        reasoning += " (good data freshness)"
+    elif fresh_ratio >= 0.4:
+        reasoning += " (moderate freshness)"
+    else:
+        reasoning += " (poor freshness - consider refreshing)"
+
+    indicator_signature_payload = {
+        "indicator_id": indicator_id,
+        "fresh_count": fresh_count,
+        "aging_count": aging_count,
+        "stale_count": stale_count,
+        "staleness_index": round(staleness_index, 2),
+        "computation_timestamp": captured_at,
+    }
+    deterministic_signature = hashlib.sha256(
+        json.dumps(indicator_signature_payload, sort_keys=True).encode()
+    ).hexdigest()
+
+    indicator = DerivedIndicator(
+        indicator_id=indicator_id,
+        title="Aggregate Data Freshness",
+        value=staleness_index,
+        unit="index",
+        display_hint="0=fresh, 1=aging, 2=stale",
+        computation_kind="aggregate_freshness",
+        source_refs=source_refs,
+        snapshot_id=None,
+        snapshot_kind="derived",
+        computation_timestamp=captured_at,
+        observed_at=None,
+        deterministic=(mode == "demo"),
+        reasoning=reasoning,
+        deterministic_signature=deterministic_signature,
+    )
+    indicators.append(indicator)
+
+    return indicators
+
+
+def _compute_derived_indicators(
+    brief_payload: dict[str, Any],
+    mode: str,
+    trace_events: list[dict[str, Any]],
+) -> list[DerivedIndicator]:
+    sources = brief_payload.get("sources", [])
+    if not isinstance(sources, list):
+        sources = []
+        brief_payload["sources"] = sources
+
+    captured_at = str(brief_payload.get("created_at") or _iso_now())
+
+    all_indicators = []
+
+    all_indicators.extend(_compute_rate_of_change_indicators(sources, mode, captured_at))
+    all_indicators.extend(_compute_spread_indicators(brief_payload, sources, mode, captured_at))
+    all_indicators.extend(_compute_trend_bucket_indicators(sources, mode, captured_at))
+    all_indicators.extend(_compute_aggregate_freshness_indicator(sources, mode, captured_at))
+
+    return all_indicators
 
 
 def _state_label_from_provenance(snapshot_kind: str, cache_lineage: str) -> str:
@@ -835,6 +1199,14 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
                                 mode=run_mode,
                                 trace_events=[*emitted_events, event],
                             )
+
+                            derived_indicators = _compute_derived_indicators(
+                                brief_payload=enriched_brief,
+                                mode=run_mode,
+                                trace_events=[*emitted_events, event],
+                            )
+                            enriched_brief["derived_indicators"] = [ind.model_dump() for ind in derived_indicators]
+
                             event["brief"] = enriched_brief
                             event["evaluation"] = evaluation
                             event["provenance"] = enriched_brief.get("provenance_summary")
@@ -980,6 +1352,14 @@ async def post_research(request: ResearchRequest) -> StreamingResponse:
                     mode=run_mode,
                     trace_events=[*emitted_events, completion],
                 )
+
+                derived_indicators = _compute_derived_indicators(
+                    brief_payload=enriched_brief,
+                    mode=run_mode,
+                    trace_events=[*emitted_events, completion],
+                )
+                enriched_brief["derived_indicators"] = [ind.model_dump() for ind in derived_indicators]
+
                 completion["brief"] = enriched_brief
                 completion["evaluation"] = evaluation
                 completion["provenance"] = enriched_brief.get("provenance_summary")

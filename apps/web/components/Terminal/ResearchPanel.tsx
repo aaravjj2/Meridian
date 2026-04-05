@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import SeriesChart from '../Charts/SeriesChart'
+import DerivedIndicatorPanel from './DerivedIndicatorPanel'
 import type {
+  DerivedIndicator,
   EvidenceNavigationState,
   ResearchBrief,
   ResearchEvaluationReport,
@@ -581,6 +583,10 @@ export default function ResearchPanel({
             </article>
           ))}
         </section>
+      ) : null}
+
+      {brief.derived_indicators && brief.derived_indicators.length > 0 ? (
+        <DerivedIndicatorPanel indicators={brief.derived_indicators} />
       ) : null}
 
       {activeClaim ? (

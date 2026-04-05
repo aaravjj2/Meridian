@@ -74,6 +74,25 @@ export type SourceProvenance = {
   snapshot?: SnapshotProvenance | null
 }
 
+export type DerivedIndicatorKind = 'rate_of_change' | 'spread' | 'delta' | 'trend_bucket' | 'aggregate_freshness' | 'conflict_pressure' | 'helper_summary'
+
+export type DerivedIndicator = {
+  indicator_id: string
+  title: string
+  value: number
+  unit?: string | null
+  display_hint?: string | null
+  computation_kind: DerivedIndicatorKind
+  source_refs: string[]
+  snapshot_id?: string | null
+  snapshot_kind?: 'fixture' | 'cache' | 'live_capture' | 'derived' | 'unknown' | null
+  computation_timestamp: string
+  observed_at?: string | null
+  deterministic: boolean
+  reasoning?: string | null
+  deterministic_signature: string
+}
+
 export type ResearchEvaluationCheck = {
   check_id: string
   passed: boolean
@@ -241,6 +260,7 @@ export type ResearchBrief = {
   signal_conflicts?: SignalConflict[]
   provenance_summary?: Record<string, unknown> | null
   snapshot_summary?: Record<string, unknown> | null
+  derived_indicators?: DerivedIndicator[]
   created_at: string
   trace_steps: number[]
 }

@@ -222,6 +222,7 @@ class ResearchBrief(BaseModel):
     signal_conflicts: list[SignalConflict] = Field(default_factory=list)
     provenance_summary: dict[str, Any] | None = None
     snapshot_summary: dict[str, Any] | None = None
+    derived_indicators: list[DerivedIndicator] = Field(default_factory=list)
     created_at: str
     trace_steps: list[int] = Field(default_factory=list)
 
@@ -695,6 +696,53 @@ class CollectionBundleExportV2(BaseModel):
     bundle_kind: Literal["collection"]
     manifest: CollectionBundleManifest
     files: dict[str, Any] = Field(default_factory=dict)
+
+
+class DerivedIndicator(BaseModel):
+    indicator_id: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=120)
+    value: float
+    unit: str | None = Field(default=None, max_length=32)
+    display_hint: str | None = Field(default=None, max_length=200)
+    computation_kind: Literal["rate_of_change", "spread", "delta", "trend_bucket", "aggregate_freshness", "conflict_pressure", "helper_summary"]
+    source_refs: list[str] = Field(default_factory=list)
+    snapshot_id: str | None = Field(default=None, min_length=8, max_length=64)
+    snapshot_kind: Literal["fixture", "cache", "live_capture", "derived", "unknown"] | None = None
+    computation_timestamp: str
+    observed_at: str | None = None
+    deterministic: bool = True
+    reasoning: str | None = Field(default=None, max_length=500)
+    deterministic_signature: str
+
+    @field_validator("indicator_id")
+    @classmethod
+    def validate_indicator_id(cls, value: str) -> str:
+        if not value.startswith("ind-"):
+            raise ValueError("indicator_id must start with 'ind-'")
+        return value
+
+    @field_validator("computation_timestamp", "observed_at")
+    @classmethod
+    def validate_iso_timestamp(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as e:
+            raise ValueError(f"Invalid ISO timestamp format: {e}") from e
+        return value
+
+
+class DerivedIndicatorProvenance(BaseModel):
+    indicator_id: str
+    computation_kind: Literal["rate_of_change", "spread", "delta", "trend_bucket", "aggregate_freshness", "conflict_pressure", "helper_summary"]
+    source_refs: list[str]
+    snapshot_id: str | None = None
+    snapshot_kind: Literal["fixture", "cache", "live_capture", "derived", "unknown"] | None = None
+    computation_timestamp: str
+    observed_at: str | None = None
+    deterministic_signature: str
+    computation_method_summary: str
 
 
 class EvidenceSourceRank(BaseModel):
