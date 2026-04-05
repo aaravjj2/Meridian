@@ -291,6 +291,67 @@ def test_workspace_evaluation_dashboard_summary_and_export_gate() -> None:
     assert export_blocked.status_code == 409
 
 
+def test_workspace_regression_pack_create_run_export_and_delete() -> None:
+    question = "Create a deterministic regression baseline for this workspace."
+    events = _collect_events(question=question, session_id="wave19-pack-thread")
+
+    saved_response = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=question,
+            session_id="wave19-pack-thread",
+            events=events,
+            brief=events[-1]["brief"],
+        ),
+    )
+    assert saved_response.status_code == 200
+    saved_id = saved_response.json()["id"]
+
+    created_pack = client.post(
+        "/api/v1/research/sessions/regression/packs",
+        json={
+            "title": "Nightly deterministic replay",
+            "description": "Replay saved sessions and detect drift",
+            "session_ids": [saved_id],
+        },
+    )
+    assert created_pack.status_code == 200
+    pack_payload = created_pack.json()
+    assert pack_payload["id"].startswith("rpack-")
+    assert pack_payload["session_ids"] == [saved_id]
+    assert pack_payload["pack_signature"]
+
+    listed_packs = client.get("/api/v1/research/sessions/regression/packs")
+    assert listed_packs.status_code == 200
+    listed_payload = listed_packs.json()
+    assert listed_payload["count"] == 1
+    assert listed_payload["packs"][0]["id"] == pack_payload["id"]
+    assert listed_payload["packs"][0]["session_count"] == 1
+
+    run_response = client.post(f"/api/v1/research/sessions/regression/packs/{pack_payload['id']}/run")
+    assert run_response.status_code == 200
+    run_payload = run_response.json()
+    assert run_payload["pack_id"] == pack_payload["id"]
+    assert run_payload["session_count"] == 1
+    assert run_payload["compared_count"] == 1
+    assert run_payload["deterministic_signature"]
+    assert len(run_payload["drifts"]) == 1
+    assert run_payload["drifts"][0]["saved_id"] == saved_id
+    assert run_payload["drifts"][0]["drift_signature"]
+
+    export_run = client.get(f"/api/v1/research/sessions/regression/packs/{pack_payload['id']}/run/export")
+    assert export_run.status_code == 200
+    assert "application/json" in export_run.headers["content-type"]
+    assert "workspace-regression-pack" in export_run.headers["content-disposition"]
+
+    deleted_pack = client.delete(f"/api/v1/research/sessions/regression/packs/{pack_payload['id']}")
+    assert deleted_pack.status_code == 200
+    assert deleted_pack.json()["deleted"] is True
+
+    get_deleted = client.get(f"/api/v1/research/sessions/regression/packs/{pack_payload['id']}")
+    assert get_deleted.status_code == 404
+
+
 def test_workspace_continue_from_saved_restores_followup_context() -> None:
     initial_question = "Give me a macro outlook for the next two quarters."
     follow_up = "How should I interpret the event probability if inflation re-accelerates?"

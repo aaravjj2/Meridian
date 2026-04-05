@@ -1,7 +1,7 @@
 import React from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { HttpResponse, http } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import HomePage from '../../../apps/web/app/page'
 import { server } from './setup'
@@ -500,6 +500,18 @@ describe('HomePage workspace persistence', () => {
   })
 
   it('supports compare and integrity workspace actions', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    let regressionPackCounter = 0
+    let regressionPacks: Array<{
+      id: string
+      title: string
+      description: string | null
+      session_count: number
+      created_at: string
+      updated_at: string
+      pack_signature: string
+    }> = []
+
     server.use(
       http.get('/api/v1/regime', () =>
         HttpResponse.json({
@@ -514,6 +526,94 @@ describe('HomePage workspace persistence', () => {
           updated_at: '2026-04-03T10:00:00Z',
         })
       ),
+      http.get('/api/v1/research/sessions/regression/packs', () =>
+        HttpResponse.json({ packs: regressionPacks, count: regressionPacks.length })
+      ),
+      http.post('/api/v1/research/sessions/regression/packs', async ({ request }) => {
+        const body = (await request.json()) as { title: string; description?: string | null; session_ids: string[] }
+        regressionPackCounter += 1
+        const created = {
+          id: `rpack-20260403-regression-${regressionPackCounter}`,
+          title: body.title,
+          description: body.description ?? null,
+          session_count: body.session_ids.length,
+          created_at: '2026-04-03T10:15:00Z',
+          updated_at: '2026-04-03T10:15:00Z',
+          pack_signature: `rpack-sig-${regressionPackCounter}`,
+        }
+        regressionPacks = [created, ...regressionPacks]
+        return HttpResponse.json(created)
+      }),
+      http.post('/api/v1/research/sessions/regression/packs/:packId/run', ({ params }) =>
+        HttpResponse.json({
+          pack_id: String(params.packId),
+          generated_at: '2026-04-03T10:16:00Z',
+          session_count: 2,
+          compared_count: 2,
+          changed_count: 1,
+          unchanged_count: 1,
+          thesis_drift_count: 1,
+          claim_drift_count: 1,
+          provenance_drift_count: 0,
+          evaluation_drift_count: 1,
+          bundle_drift_count: 0,
+          deterministic_signature: 'rpack-run-sig-001',
+          drifts: [
+            {
+              saved_id: savedSummary.id,
+              question: savedSummary.question,
+              template_id: 'macro_outlook',
+              signature_before: 'sig-before-1',
+              signature_after: 'sig-after-1',
+              signature_changed: true,
+              thesis_changed: true,
+              confidence_changed: false,
+              claim_ids_added: ['bull-4-new'],
+              claim_ids_removed: [],
+              provenance_signature_before: 'prov-sig-before-1',
+              provenance_signature_after: 'prov-sig-before-1',
+              provenance_changed: false,
+              evaluation_signature_before: 'eval-abc123',
+              evaluation_signature_after: 'eval-abc999',
+              evaluation_changed: true,
+              evaluation_passed_before: true,
+              evaluation_passed_after: false,
+              bundle_snapshot_signature_before: 'bundle-before-1',
+              bundle_snapshot_signature_after: 'bundle-before-1',
+              bundle_snapshot_changed: false,
+              drift_signature: 'drift-001',
+            },
+          ],
+        })
+      ),
+      http.get('/api/v1/research/sessions/regression/packs/:packId/run/export', ({ params }) =>
+        HttpResponse.json(
+          {
+            pack_id: String(params.packId),
+            generated_at: '2026-04-03T10:16:00Z',
+            session_count: 2,
+            compared_count: 2,
+            changed_count: 1,
+            unchanged_count: 1,
+            thesis_drift_count: 1,
+            claim_drift_count: 1,
+            provenance_drift_count: 0,
+            evaluation_drift_count: 1,
+            bundle_drift_count: 0,
+            deterministic_signature: 'rpack-run-sig-001',
+            drifts: [],
+          },
+          {
+            headers: {
+              'content-disposition': `attachment; filename=workspace-regression-pack-${String(params.packId)}.json`,
+            },
+          }
+        )
+      ),
+      http.delete('/api/v1/research/sessions/regression/packs/:packId', ({ params }) => {
+        regressionPacks = regressionPacks.filter((item) => item.id !== String(params.packId))
+        return HttpResponse.json({ deleted: true, id: params.packId })
+      }),
       http.get('/api/v1/research/sessions', ({ request }) => {
         const url = new URL(request.url)
         if (url.searchParams.get('search') === 'Second') {
@@ -918,12 +1018,43 @@ describe('HomePage workspace persistence', () => {
       expect(screen.getByTestId('workspace-status')).toHaveTextContent('Exported workspace evaluation dashboard summary')
     })
 
+    expect(screen.getByTestId('workspace-regression-pack-empty')).toBeInTheDocument()
+    fireEvent.change(screen.getByTestId('workspace-regression-pack-create-title'), {
+      target: { value: 'Nightly replay pack' },
+    })
+    fireEvent.change(screen.getByTestId('workspace-regression-pack-create-description'), {
+      target: { value: 'Run replay checks across visible sessions' },
+    })
+    fireEvent.click(screen.getByTestId('workspace-regression-pack-create'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-regression-pack-select')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('workspace-regression-pack-session-count')).toHaveTextContent('2')
+
+    fireEvent.click(screen.getByTestId('workspace-regression-pack-run'))
+    expect(await screen.findByTestId('workspace-regression-pack-run-result')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-regression-pack-run-summary')).toHaveTextContent('changed 1')
+    expect(screen.getByTestId('workspace-regression-pack-run-drift-0')).toHaveTextContent(savedSummary.id)
+
+    fireEvent.click(screen.getByTestId('workspace-regression-pack-export'))
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-status')).toHaveTextContent('Exported regression pack run')
+    })
+
+    fireEvent.click(screen.getByTestId('workspace-regression-pack-delete'))
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-status')).toHaveTextContent('Deleted regression pack')
+    })
+
     fireEvent.change(screen.getByTestId('workspace-search-input'), {
       target: { value: 'Second' },
     })
     await waitFor(() => {
       expect(screen.getByText('Second saved macro question')).toBeInTheDocument()
     })
+
+    confirmSpy.mockRestore()
   })
 
   it('supports collection create, timeline management, reorder, and reopen actions', async () => {

@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from meridian.normalisation.schemas import CreateRegressionPackRequest
 from meridian.workspace.session_store import SaveResearchSessionRequest, get_session_store
 
 
@@ -95,6 +96,69 @@ async def export_workspace_evaluation_dashboard(
     filename = f"workspace-evaluation-dashboard-{timestamp}.json"
     return Response(
         content=dashboard.model_dump_json(indent=2) + "\n",
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/research/sessions/regression/packs")
+async def list_regression_packs() -> dict[str, object]:
+    store = get_session_store()
+    packs = store.list_regression_packs()
+    return {
+        "packs": [item.model_dump() for item in packs],
+        "count": len(packs),
+    }
+
+
+@router.post("/research/sessions/regression/packs")
+async def create_regression_pack(payload: CreateRegressionPackRequest) -> dict[str, object]:
+    store = get_session_store()
+    try:
+        pack = store.create_regression_pack(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return pack.model_dump()
+
+
+@router.get("/research/sessions/regression/packs/{pack_id}")
+async def get_regression_pack(pack_id: str) -> dict[str, object]:
+    store = get_session_store()
+    pack = store.get_regression_pack(pack_id)
+    if pack is None:
+        raise HTTPException(status_code=404, detail=f"Regression pack not found: {pack_id}")
+    return pack.model_dump()
+
+
+@router.delete("/research/sessions/regression/packs/{pack_id}")
+async def delete_regression_pack(pack_id: str) -> dict[str, object]:
+    store = get_session_store()
+    deleted = store.delete_regression_pack(pack_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Regression pack not found: {pack_id}")
+    return {"deleted": True, "id": pack_id}
+
+
+@router.post("/research/sessions/regression/packs/{pack_id}/run")
+async def run_regression_pack(pack_id: str) -> dict[str, object]:
+    store = get_session_store()
+    run = await store.run_regression_pack(pack_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Regression pack not found: {pack_id}")
+    return run.model_dump()
+
+
+@router.get("/research/sessions/regression/packs/{pack_id}/run/export")
+async def export_regression_pack_run(pack_id: str) -> Response:
+    store = get_session_store()
+    run = await store.run_regression_pack(pack_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Regression pack not found: {pack_id}")
+
+    timestamp = run.generated_at.replace(":", "").replace("-", "")
+    filename = f"workspace-regression-pack-{pack_id}-{timestamp}.json"
+    return Response(
+        content=run.model_dump_json(indent=2) + "\n",
         media_type="application/json",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

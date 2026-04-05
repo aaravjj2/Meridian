@@ -48,6 +48,68 @@ export const server = setupServer(
       ],
       count: 4,
     })
+  ),
+  http.get('/api/v1/research/sessions/regression/packs', () =>
+    HttpResponse.json({
+      packs: [],
+      count: 0,
+    })
+  ),
+  http.post('/api/v1/research/sessions/regression/packs', async ({ request }) => {
+    const body = (await request.json()) as { title?: string; description?: string | null; session_ids?: string[] }
+    return HttpResponse.json({
+      id: 'rpack-20260405000000-default0001',
+      title: body.title ?? 'Regression Pack',
+      description: body.description ?? null,
+      session_count: Array.isArray(body.session_ids) ? body.session_ids.length : 0,
+      created_at: '2026-04-05T00:00:00Z',
+      updated_at: '2026-04-05T00:00:00Z',
+      pack_signature: 'rpack-sig-default-001',
+    })
+  }),
+  http.delete('/api/v1/research/sessions/regression/packs/:packId', ({ params }) =>
+    HttpResponse.json({ deleted: true, id: params.packId })
+  ),
+  http.post('/api/v1/research/sessions/regression/packs/:packId/run', ({ params }) =>
+    HttpResponse.json({
+      pack_id: params.packId,
+      generated_at: '2026-04-05T00:00:10Z',
+      session_count: 0,
+      compared_count: 0,
+      changed_count: 0,
+      unchanged_count: 0,
+      thesis_drift_count: 0,
+      claim_drift_count: 0,
+      provenance_drift_count: 0,
+      evaluation_drift_count: 0,
+      bundle_drift_count: 0,
+      deterministic_signature: 'rpack-run-sig-default-001',
+      drifts: [],
+    })
+  ),
+  http.get('/api/v1/research/sessions/regression/packs/:packId/run/export', ({ params }) =>
+    HttpResponse.json(
+      {
+        pack_id: params.packId,
+        generated_at: '2026-04-05T00:00:10Z',
+        session_count: 0,
+        compared_count: 0,
+        changed_count: 0,
+        unchanged_count: 0,
+        thesis_drift_count: 0,
+        claim_drift_count: 0,
+        provenance_drift_count: 0,
+        evaluation_drift_count: 0,
+        bundle_drift_count: 0,
+        deterministic_signature: 'rpack-run-sig-default-001',
+        drifts: [],
+      },
+      {
+        headers: {
+          'content-disposition': `attachment; filename=workspace-regression-pack-${String(params.packId)}.json`,
+        },
+      }
+    )
   )
 )
 

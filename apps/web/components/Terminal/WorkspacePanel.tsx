@@ -7,6 +7,8 @@ import type {
   ResearchCollection,
   ResearchCollectionSummary,
   ResearchEvaluationDashboard,
+  ResearchRegressionPackRun,
+  ResearchRegressionPackSummary,
   ResearchReviewChecklist,
   ResearchThreadTimelineDetail,
   ResearchThesisDelta,
@@ -31,6 +33,7 @@ type WorkspacePanelProps = {
   integrityBusy: boolean
   reviewBusy: boolean
   evaluationDashboardBusy: boolean
+  regressionPackBusy: boolean
   searchValue: string
   includeArchived: boolean
   queryClassFilter: ResearchBrief['query_class'] | 'all'
@@ -39,6 +42,9 @@ type WorkspacePanelProps = {
   integrityReport: SessionIntegrityReport | null
   reviewChecklist: ResearchReviewChecklist | null
   evaluationDashboard: ResearchEvaluationDashboard | null
+  regressionPacks: ResearchRegressionPackSummary[]
+  activeRegressionPackId: string | null
+  regressionRun: ResearchRegressionPackRun | null
   integrityOverview: { count: number; issueCount: number } | null
   statusMessage: string | null
   collectionState: 'loading' | 'ready' | 'error'
@@ -83,6 +89,12 @@ type WorkspacePanelProps = {
   onVerifyWorkspaceIntegrity: () => void
   onRunEvaluationDashboard: () => void
   onExportEvaluationDashboard: () => void
+  onRegressionPackSelect: (packId: string) => void
+  onRegressionPackRefresh: () => void
+  onRegressionPackCreateFromVisible: (payload: { title: string; description?: string | null }) => void
+  onRegressionPackDelete: (packId: string) => void
+  onRunRegressionPack: (packId: string) => void
+  onExportRegressionPackRun: (packId: string) => void
 }
 
 function queryClassLabel(value: SavedResearchSessionSummary['query_class']): string {
@@ -168,6 +180,7 @@ export default function WorkspacePanel({
   integrityBusy,
   reviewBusy,
   evaluationDashboardBusy,
+  regressionPackBusy,
   searchValue,
   includeArchived,
   queryClassFilter,
@@ -176,6 +189,9 @@ export default function WorkspacePanel({
   integrityReport,
   reviewChecklist,
   evaluationDashboard,
+  regressionPacks,
+  activeRegressionPackId,
+  regressionRun,
   integrityOverview,
   statusMessage,
   collectionState,
@@ -217,12 +233,20 @@ export default function WorkspacePanel({
   onVerifyWorkspaceIntegrity,
   onRunEvaluationDashboard,
   onExportEvaluationDashboard,
+  onRegressionPackSelect,
+  onRegressionPackRefresh,
+  onRegressionPackCreateFromVisible,
+  onRegressionPackDelete,
+  onRunRegressionPack,
+  onExportRegressionPackRun,
 }: WorkspacePanelProps) {
   const [compareLeftId, setCompareLeftId] = useState('')
   const [compareRightId, setCompareRightId] = useState('')
   const [newCollectionTitle, setNewCollectionTitle] = useState('')
   const [newCollectionSummary, setNewCollectionSummary] = useState('')
   const [newCollectionNotes, setNewCollectionNotes] = useState('')
+  const [newRegressionPackTitle, setNewRegressionPackTitle] = useState('')
+  const [newRegressionPackDescription, setNewRegressionPackDescription] = useState('')
   const [editCollectionTitle, setEditCollectionTitle] = useState('')
   const [editCollectionSummary, setEditCollectionSummary] = useState('')
   const [editCollectionNotes, setEditCollectionNotes] = useState('')
@@ -230,6 +254,10 @@ export default function WorkspacePanel({
   const compareOptions = useMemo(
     () => sessions.map((session) => ({ id: session.id, label: session.label || session.question })),
     [sessions]
+  )
+  const activeRegressionPack = useMemo(
+    () => regressionPacks.find((pack) => pack.id === activeRegressionPackId) ?? null,
+    [activeRegressionPackId, regressionPacks]
   )
 
   useEffect(() => {
@@ -283,6 +311,30 @@ export default function WorkspacePanel({
       summary: editCollectionSummary.trim() || null,
       notes: editCollectionNotes.trim() || null,
     })
+  }
+
+  function createRegressionPackFromForm(): void {
+    const title = newRegressionPackTitle.trim()
+    if (!title || regressionPackBusy || sessions.length === 0) {
+      return
+    }
+    onRegressionPackCreateFromVisible({
+      title,
+      description: newRegressionPackDescription.trim() || null,
+    })
+    setNewRegressionPackTitle('')
+    setNewRegressionPackDescription('')
+  }
+
+  function confirmDeleteRegressionPack(): void {
+    if (!activeRegressionPackId) {
+      return
+    }
+    const confirmed = window.confirm(`Delete regression pack ${activeRegressionPackId}?`)
+    if (!confirmed) {
+      return
+    }
+    onRegressionPackDelete(activeRegressionPackId)
   }
 
   return (
@@ -1034,6 +1086,146 @@ export default function WorkspacePanel({
         ) : (
           <p className="workspace-status" data-testid="workspace-evaluation-dashboard-empty">
             Run Dashboard to summarize pass/fail rates, recurring failure types, provenance gaps, stale-source incidence, and claim-linking gaps across saved sessions.
+          </p>
+        )}
+      </div>
+
+      <div className="workspace-integrity" data-testid="workspace-regression-pack-panel">
+        <div className="workspace-collections-header">
+          <span className="block-label">REGRESSION PACKS</span>
+          <button
+            type="button"
+            data-testid="workspace-regression-pack-refresh"
+            onClick={onRegressionPackRefresh}
+            disabled={regressionPackBusy}
+          >
+            Refresh
+          </button>
+        </div>
+        <div className="workspace-collections-create" data-testid="workspace-regression-pack-create-form">
+          <input
+            type="text"
+            value={newRegressionPackTitle}
+            placeholder="Regression pack title"
+            data-testid="workspace-regression-pack-create-title"
+            onChange={(event) => setNewRegressionPackTitle(event.target.value)}
+          />
+          <input
+            type="text"
+            value={newRegressionPackDescription}
+            placeholder="Description (optional)"
+            data-testid="workspace-regression-pack-create-description"
+            onChange={(event) => setNewRegressionPackDescription(event.target.value)}
+          />
+          <button
+            type="button"
+            data-testid="workspace-regression-pack-create"
+            disabled={regressionPackBusy || !newRegressionPackTitle.trim() || sessions.length === 0}
+            onClick={createRegressionPackFromForm}
+          >
+            {regressionPackBusy ? 'Working...' : `Create from ${sessions.length} visible session(s)`}
+          </button>
+        </div>
+
+        {regressionPacks.length === 0 ? (
+          <p className="workspace-status" data-testid="workspace-regression-pack-empty">
+            No regression packs yet.
+          </p>
+        ) : (
+          <>
+            <select
+              data-testid="workspace-regression-pack-select"
+              value={activeRegressionPackId ?? ''}
+              onChange={(event) => onRegressionPackSelect(event.target.value)}
+              disabled={regressionPackBusy}
+            >
+              <option value="">Select regression pack</option>
+              {regressionPacks.map((pack) => (
+                <option key={pack.id} value={pack.id}>
+                  {pack.title} ({pack.session_count})
+                </option>
+              ))}
+            </select>
+
+            <div className="workspace-actions">
+              <button
+                type="button"
+                data-testid="workspace-regression-pack-run"
+                onClick={() => {
+                  if (activeRegressionPackId) {
+                    onRunRegressionPack(activeRegressionPackId)
+                  }
+                }}
+                disabled={regressionPackBusy || !activeRegressionPackId}
+              >
+                {regressionPackBusy ? 'Running...' : 'Run Pack'}
+              </button>
+              <button
+                type="button"
+                data-testid="workspace-regression-pack-export"
+                onClick={() => {
+                  if (activeRegressionPackId) {
+                    onExportRegressionPackRun(activeRegressionPackId)
+                  }
+                }}
+                disabled={regressionPackBusy || !activeRegressionPackId}
+              >
+                Export Run
+              </button>
+              <button
+                type="button"
+                data-testid="workspace-regression-pack-delete"
+                onClick={confirmDeleteRegressionPack}
+                disabled={regressionPackBusy || !activeRegressionPackId}
+              >
+                Delete Pack
+              </button>
+            </div>
+
+            {activeRegressionPack ? (
+              <div className="workspace-integrity-result" data-testid="workspace-regression-pack-selected">
+                <p data-testid="workspace-regression-pack-session-count">
+                  Sessions in pack: {activeRegressionPack.session_count}
+                </p>
+                <p className="workspace-item-snapshot-signature" data-testid="workspace-regression-pack-signature">
+                  Signature: {activeRegressionPack.pack_signature}
+                </p>
+              </div>
+            ) : null}
+          </>
+        )}
+
+        {regressionRun ? (
+          <div className="workspace-integrity-result" data-testid="workspace-regression-pack-run-result">
+            <p data-testid="workspace-regression-pack-run-summary">
+              Sessions {regressionRun.session_count} | compared {regressionRun.compared_count} | changed{' '}
+              {regressionRun.changed_count} | unchanged {regressionRun.unchanged_count}
+            </p>
+            <p data-testid="workspace-regression-pack-run-drift-counts">
+              Thesis {regressionRun.thesis_drift_count} | claims {regressionRun.claim_drift_count} | provenance{' '}
+              {regressionRun.provenance_drift_count} | evaluation {regressionRun.evaluation_drift_count} | bundle{' '}
+              {regressionRun.bundle_drift_count}
+            </p>
+            <p className="workspace-item-snapshot-signature" data-testid="workspace-regression-pack-run-signature">
+              Signature: {regressionRun.deterministic_signature}
+            </p>
+            {regressionRun.drifts.length > 0 ? (
+              <ul className="workspace-compare-drift-list" data-testid="workspace-regression-pack-run-drifts">
+                {regressionRun.drifts.slice(0, 5).map((drift, idx) => (
+                  <li key={`${drift.saved_id}-${idx}`} data-testid={`workspace-regression-pack-run-drift-${idx}`}>
+                    {drift.saved_id}: sig {drift.signature_changed ? 'changed' : 'same'} | thesis{' '}
+                    {drift.thesis_changed ? 'changed' : 'same'} | claims +{drift.claim_ids_added.length}/-
+                    {drift.claim_ids_removed.length} | provenance {drift.provenance_changed ? 'changed' : 'same'}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p data-testid="workspace-regression-pack-run-drifts-none">No comparable sessions in run.</p>
+            )}
+          </div>
+        ) : (
+          <p className="workspace-status" data-testid="workspace-regression-pack-run-empty">
+            Run a regression pack to compare replayed outputs against saved workspace baselines.
           </p>
         )}
       </div>

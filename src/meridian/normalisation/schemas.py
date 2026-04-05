@@ -424,6 +424,113 @@ class ResearchCollectionSummary(BaseModel):
     collection_signature: str
 
 
+class ResearchRegressionPack(BaseModel):
+    id: str
+    title: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    session_ids: list[str] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
+    pack_signature: str
+
+    @field_validator("id")
+    @classmethod
+    def ensure_id(cls, value: str) -> str:
+        pack_id = value.strip()
+        if not pack_id.startswith("rpack-"):
+            raise ValueError("id must start with 'rpack-'")
+        return pack_id
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("title must be non-empty")
+        return cleaned
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class ResearchRegressionPackSummary(BaseModel):
+    id: str
+    title: str
+    description: str | None = None
+    session_count: int
+    created_at: str
+    updated_at: str
+    pack_signature: str
+
+
+class CreateRegressionPackRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    session_ids: list[str] = Field(min_length=1)
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("title must be non-empty")
+        return cleaned
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class ResearchRegressionSessionDrift(BaseModel):
+    saved_id: str
+    question: str
+    template_id: ResearchTemplateId | None = None
+    signature_before: str
+    signature_after: str
+    signature_changed: bool
+    thesis_changed: bool
+    confidence_changed: bool
+    claim_ids_added: list[str] = Field(default_factory=list)
+    claim_ids_removed: list[str] = Field(default_factory=list)
+    provenance_signature_before: str
+    provenance_signature_after: str
+    provenance_changed: bool
+    evaluation_signature_before: str | None = None
+    evaluation_signature_after: str | None = None
+    evaluation_changed: bool
+    evaluation_passed_before: bool | None = None
+    evaluation_passed_after: bool | None = None
+    bundle_snapshot_signature_before: str | None = None
+    bundle_snapshot_signature_after: str | None = None
+    bundle_snapshot_changed: bool = False
+    drift_signature: str
+
+
+class ResearchRegressionPackRun(BaseModel):
+    pack_id: str
+    generated_at: str
+    session_count: int = Field(ge=0)
+    compared_count: int = Field(ge=0)
+    changed_count: int = Field(ge=0)
+    unchanged_count: int = Field(ge=0)
+    thesis_drift_count: int = Field(ge=0)
+    claim_drift_count: int = Field(ge=0)
+    provenance_drift_count: int = Field(ge=0)
+    evaluation_drift_count: int = Field(ge=0)
+    bundle_drift_count: int = Field(ge=0)
+    deterministic_signature: str
+    drifts: list[ResearchRegressionSessionDrift] = Field(default_factory=list)
+
+
 class CreateCollectionRequest(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     summary: str | None = Field(default=None, max_length=500)

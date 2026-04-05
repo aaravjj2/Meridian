@@ -16,6 +16,8 @@ import type {
   ResearchCollectionSummary,
   ResearchEvaluationDashboard,
   ResearchEvaluationReport,
+  ResearchRegressionPackRun,
+  ResearchRegressionPackSummary,
   ResearchBrief,
   ResearchReviewChecklist,
   ResearchTemplateDefinition,
@@ -573,6 +575,60 @@ async function exportWorkspaceEvaluationDashboard(options?: ListSavedSessionsOpt
   return response
 }
 
+async function listRegressionPacks(): Promise<ResearchRegressionPackSummary[]> {
+  const response = await fetch('/api/v1/research/sessions/regression/packs')
+  if (!response.ok) {
+    throw new Error(`Failed to list regression packs: ${response.status}`)
+  }
+  const payload = (await response.json()) as { packs?: ResearchRegressionPackSummary[] }
+  return payload.packs ?? []
+}
+
+async function createRegressionPack(payload: {
+  title: string
+  description?: string | null
+  session_ids: string[]
+}): Promise<ResearchRegressionPackSummary> {
+  const response = await fetch('/api/v1/research/sessions/regression/packs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to create regression pack: ${response.status}`)
+  }
+  return (await response.json()) as ResearchRegressionPackSummary
+}
+
+async function deleteRegressionPack(packId: string): Promise<void> {
+  const response = await fetch(`/api/v1/research/sessions/regression/packs/${encodeURIComponent(packId)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to delete regression pack: ${response.status}`)
+  }
+}
+
+async function runRegressionPack(packId: string): Promise<ResearchRegressionPackRun> {
+  const response = await fetch(`/api/v1/research/sessions/regression/packs/${encodeURIComponent(packId)}/run`, {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to run regression pack: ${response.status}`)
+  }
+  return (await response.json()) as ResearchRegressionPackRun
+}
+
+async function exportRegressionPackRun(packId: string): Promise<Response> {
+  const response = await fetch(
+    `/api/v1/research/sessions/regression/packs/${encodeURIComponent(packId)}/run/export`
+  )
+  if (!response.ok) {
+    throw new Error(`Failed to export regression pack run: ${response.status}`)
+  }
+  return response
+}
+
 type CollectionDetailResponse = {
   collection: Omit<ResearchCollection, 'timeline' | 'missing_session_count' | 'timeline_signature'>
   timeline?: ResearchCollection['timeline']
@@ -773,6 +829,10 @@ export default function HomePage() {
   const [reviewChecklist, setReviewChecklist] = useState<ResearchReviewChecklist | null>(null)
   const [evaluationDashboardBusy, setEvaluationDashboardBusy] = useState(false)
   const [evaluationDashboard, setEvaluationDashboard] = useState<ResearchEvaluationDashboard | null>(null)
+  const [regressionPackBusy, setRegressionPackBusy] = useState(false)
+  const [regressionPacks, setRegressionPacks] = useState<ResearchRegressionPackSummary[]>([])
+  const [activeRegressionPackId, setActiveRegressionPackId] = useState<string | null>(null)
+  const [regressionRun, setRegressionRun] = useState<ResearchRegressionPackRun | null>(null)
   const [collectionsState, setCollectionsState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [collectionsError, setCollectionsError] = useState('')
   const [collections, setCollections] = useState<ResearchCollectionSummary[]>([])
@@ -845,6 +905,34 @@ export default function HomePage() {
   useEffect(() => {
     setEvaluationDashboard(null)
   }, [workspaceSearch, includeArchived, queryClassFilter])
+
+  const refreshRegressionPacks = useCallback(
+    async (preferredPackId?: string | null) => {
+      setRegressionPackBusy(true)
+      try {
+        const packs = await listRegressionPacks()
+        setRegressionPacks(packs)
+        setActiveRegressionPackId((previous) => {
+          if (preferredPackId !== undefined) {
+            return packs.some((pack) => pack.id === preferredPackId) ? preferredPackId : packs[0]?.id ?? null
+          }
+          if (previous && packs.some((pack) => pack.id === previous)) {
+            return previous
+          }
+          return packs[0]?.id ?? null
+        })
+      } catch (loadError) {
+        setWorkspaceStatus(loadError instanceof Error ? loadError.message : 'Failed to load regression packs')
+      } finally {
+        setRegressionPackBusy(false)
+      }
+    },
+    []
+  )
+
+  useEffect(() => {
+    void refreshRegressionPacks()
+  }, [refreshRegressionPacks])
 
   useEffect(() => {
     let active = true
@@ -1444,6 +1532,85 @@ export default function HomePage() {
     }
   }, [includeArchived, queryClassFilter, workspaceSearch])
 
+  const createRegressionPackFromVisibleSessions = useCallback(
+    async (payload: { title: string; description?: string | null }) => {
+      const maxPackSessions = 12
+      const sessionIds = savedSessions.slice(0, maxPackSessions).map((item) => item.id)
+      if (sessionIds.length === 0) {
+        setWorkspaceStatus('No visible sessions to include in a regression pack.')
+        return
+      }
+
+      setRegressionPackBusy(true)
+      try {
+        const created = await createRegressionPack({
+          title: payload.title,
+          description: payload.description,
+          session_ids: sessionIds,
+        })
+        await refreshRegressionPacks(created.id)
+        setRegressionRun(null)
+        const skippedCount = Math.max(0, savedSessions.length - sessionIds.length)
+        setWorkspaceStatus(
+          skippedCount > 0
+            ? `Created regression pack ${created.id} from ${sessionIds.length} sessions (${skippedCount} skipped)`
+            : `Created regression pack ${created.id}`
+        )
+      } catch (packError) {
+        setWorkspaceStatus(packError instanceof Error ? packError.message : 'Failed to create regression pack')
+      } finally {
+        setRegressionPackBusy(false)
+      }
+    },
+    [refreshRegressionPacks, savedSessions]
+  )
+
+  const deleteRegressionPackById = useCallback(
+    async (packId: string) => {
+      setRegressionPackBusy(true)
+      try {
+        await deleteRegressionPack(packId)
+        await refreshRegressionPacks()
+        setRegressionRun(null)
+        setWorkspaceStatus(`Deleted regression pack ${packId}`)
+      } catch (packError) {
+        setWorkspaceStatus(packError instanceof Error ? packError.message : 'Failed to delete regression pack')
+      } finally {
+        setRegressionPackBusy(false)
+      }
+    },
+    [refreshRegressionPacks]
+  )
+
+  const runRegressionPackById = useCallback(async (packId: string) => {
+    setRegressionPackBusy(true)
+    try {
+      const result = await runRegressionPack(packId)
+      setRegressionRun(result)
+      setWorkspaceStatus(
+        `Regression run complete: ${result.changed_count}/${result.compared_count} sessions changed`
+      )
+    } catch (packError) {
+      setWorkspaceStatus(packError instanceof Error ? packError.message : 'Failed to run regression pack')
+    } finally {
+      setRegressionPackBusy(false)
+    }
+  }, [])
+
+  const exportRegressionPackRunById = useCallback(async (packId: string) => {
+    setRegressionPackBusy(true)
+    try {
+      const response = await exportRegressionPackRun(packId)
+      const blob = await response.blob()
+      triggerDownload(response, blob)
+      setWorkspaceStatus(`Exported regression pack run ${packId}`)
+    } catch (packError) {
+      setWorkspaceStatus(packError instanceof Error ? packError.message : 'Failed to export regression pack run')
+    } finally {
+      setRegressionPackBusy(false)
+    }
+  }, [])
+
   async function runQuery(question: string) {
     const priorQuestion = queryHistory.length > 0 ? queryHistory[queryHistory.length - 1] : null
 
@@ -1538,6 +1705,7 @@ export default function HomePage() {
               integrityBusy={integrityBusy}
               reviewBusy={reviewBusy}
               evaluationDashboardBusy={evaluationDashboardBusy}
+              regressionPackBusy={regressionPackBusy}
               searchValue={workspaceSearch}
               includeArchived={includeArchived}
               queryClassFilter={queryClassFilter}
@@ -1546,6 +1714,9 @@ export default function HomePage() {
               integrityReport={integrityReport}
               reviewChecklist={reviewChecklist}
               evaluationDashboard={evaluationDashboard}
+              regressionPacks={regressionPacks}
+              activeRegressionPackId={activeRegressionPackId}
+              regressionRun={regressionRun}
               integrityOverview={integrityOverview}
               statusMessage={workspaceStatus}
               collectionState={collectionsState}
@@ -1642,6 +1813,22 @@ export default function HomePage() {
               }}
               onExportEvaluationDashboard={() => {
                 void exportWorkspaceEvaluationSummary()
+              }}
+              onRegressionPackSelect={setActiveRegressionPackId}
+              onRegressionPackRefresh={() => {
+                void refreshRegressionPacks()
+              }}
+              onRegressionPackCreateFromVisible={(payload) => {
+                void createRegressionPackFromVisibleSessions(payload)
+              }}
+              onRegressionPackDelete={(packId) => {
+                void deleteRegressionPackById(packId)
+              }}
+              onRunRegressionPack={(packId) => {
+                void runRegressionPackById(packId)
+              }}
+              onExportRegressionPackRun={(packId) => {
+                void exportRegressionPackRunById(packId)
               }}
             />
             <ResearchPanel

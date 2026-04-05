@@ -254,6 +254,9 @@ Meridian supports a single-user research workspace directly in the terminal flow
 - Surface explicit source state labels (`fixture|cached|live|derived`) and latest fetched/cached/generated timestamps across research, workspace summaries, and bundle exports
 - Run a deterministic builder-facing evaluation dashboard across saved sessions with pass/fail counts, recurring failed checks, provenance gaps, stale-source incidence, claim-linking gaps, and template usage
 - Export evaluation-dashboard JSON summaries when aggregate quality is clean enough for release audit handoff
+- Build deterministic session regression packs from visible workspace sessions (capped to recent 12 for bounded replay latency)
+- Re-run regression packs to emit per-session drift diagnostics (signature/thesis/claims/provenance/evaluation/bundle)
+- Export regression-pack run JSON reports with stable deterministic signatures for release-review evidence
 - Expose snapshot summary metadata (kind counts, lineage counts, checksum coverage) in terminal/workspace UI
 - Generate deterministic snapshot-aware evaluation checks with stable signatures for audit/replay confidence
 - Run integrity checks that validate snapshot completeness/consistency alongside canonical signatures
@@ -279,6 +282,7 @@ Optional override for local testing:
 
 - `MERIDIAN_SESSION_STORE_DIR=<path>`
 - `MERIDIAN_COLLECTION_STORE_DIR=<path>`
+- `MERIDIAN_REGRESSION_PACK_DIR=<path>`
 
 ---
 

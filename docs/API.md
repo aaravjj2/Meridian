@@ -380,6 +380,86 @@ Behavior:
 - returns `application/json` attachment when clean
 - returns HTTP `409` if dashboard quality is not clean enough for export
 
+### GET /api/v1/research/sessions/regression/packs
+
+Lists Wave 19 regression packs available in workspace storage.
+
+Response:
+
+```json
+{
+  "packs": [
+    {
+      "id": "rpack-20260405010101-ab12cd34",
+      "title": "Nightly replay pack",
+      "description": "Replay baseline sessions and detect drift",
+      "session_count": 12,
+      "created_at": "2026-04-05T01:01:01Z",
+      "updated_at": "2026-04-05T01:01:01Z",
+      "pack_signature": "<sha256>"
+    }
+  ],
+  "count": 1
+}
+```
+
+### POST /api/v1/research/sessions/regression/packs
+
+Creates a regression pack from saved-session ids.
+
+Request body:
+
+```json
+{
+  "title": "Nightly replay pack",
+  "description": "Replay baseline sessions and detect drift",
+  "session_ids": ["rs-...", "rs-..."]
+}
+```
+
+Behavior:
+
+- de-duplicates and normalizes session ids
+- returns HTTP `400` when any requested saved session id does not exist
+- computes deterministic `pack_signature` from title/description/session id set
+
+### GET /api/v1/research/sessions/regression/packs/{pack_id}
+
+Returns a full regression pack record including ordered `session_ids`.
+
+### DELETE /api/v1/research/sessions/regression/packs/{pack_id}
+
+Deletes a regression pack.
+
+Response:
+
+```json
+{
+  "deleted": true,
+  "id": "rpack-..."
+}
+```
+
+### POST /api/v1/research/sessions/regression/packs/{pack_id}/run
+
+Runs deterministic replay for each saved session in the pack and returns a drift report.
+
+Response highlights:
+
+- `session_count`, `compared_count`, `changed_count`, `unchanged_count`
+- drift buckets: `thesis_drift_count`, `claim_drift_count`, `provenance_drift_count`, `evaluation_drift_count`, `bundle_drift_count`
+- `deterministic_signature` for stable run-level audit comparison
+- `drifts[]` with per-session before/after signatures, claim deltas, provenance drift, evaluation drift, and `drift_signature`
+
+### GET /api/v1/research/sessions/regression/packs/{pack_id}/run/export
+
+Exports a regression run report as downloadable JSON.
+
+Behavior:
+
+- executes the same deterministic replay workflow as `POST .../run`
+- returns `application/json` attachment named `workspace-regression-pack-<pack_id>-<timestamp>.json`
+
 ### GET /api/v1/research/sessions/{saved_id}/integrity
 
 Runs integrity checks for a single saved session.

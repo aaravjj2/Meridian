@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 
 test('workspace persistence: manage, compare, integrity, export, and continue', async ({ page }) => {
+  test.setTimeout(90000)
+
   await page.goto('/')
   await expect(page.getByTestId('query-template-select')).toBeVisible()
 
@@ -103,6 +105,15 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await expect(page.getByTestId('workspace-evaluation-dashboard-pass-rate')).toBeVisible()
   await expect(page.getByTestId('workspace-evaluation-dashboard-signature')).toBeVisible()
   await expect(page.getByTestId('workspace-evaluation-dashboard-export-ready')).toBeVisible()
+
+  await page.getByTestId('workspace-regression-pack-create-title').fill('Workspace baseline replay')
+  await page.getByTestId('workspace-regression-pack-create-description').fill('Replay visible sessions for drift checks')
+  await page.getByTestId('workspace-regression-pack-create').click()
+  await expect(page.getByTestId('workspace-regression-pack-select')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByTestId('workspace-regression-pack-signature')).toBeVisible()
+  await page.getByTestId('workspace-regression-pack-run').click()
+  await expect(page.getByTestId('workspace-regression-pack-run-result')).toBeVisible({ timeout: 30000 })
+  await expect(page.getByTestId('workspace-regression-pack-run-summary')).toBeVisible()
 
   await page.getByTestId('workspace-review-0').click()
   await expect(page.getByTestId('workspace-review-result')).toBeVisible({ timeout: 10000 })

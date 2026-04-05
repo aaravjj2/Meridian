@@ -11,8 +11,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from meridian.agent.react import ResearchAgent
 from meridian.agent.templates import resolve_research_template
 from meridian.normalisation.schemas import (
+    CreateRegressionPackRequest,
     ResearchBrief,
     ResearchCollectionTimelineEntry,
     ResearchEvaluationDashboard,
@@ -20,6 +22,10 @@ from meridian.normalisation.schemas import (
     ResearchEvaluationDashboardSession,
     ResearchEvaluationCheck,
     ResearchEvaluationReport,
+    ResearchRegressionPack,
+    ResearchRegressionPackRun,
+    ResearchRegressionPackSummary,
+    ResearchRegressionSessionDrift,
     ResearchReviewChecklist,
     ResearchReviewChecklistItem,
     ResearchTemplateId,
@@ -29,6 +35,7 @@ from meridian.normalisation.schemas import (
     SessionBundleExportV2,
     SnapshotProvenance,
     SourceProvenance,
+    TraceStep,
 )
 from meridian.settings import ROOT_DIR
 
@@ -142,6 +149,16 @@ def _default_store_dir() -> Path:
             path = ROOT_DIR / path
         return path
     return ROOT_DIR / "data" / "processed" / "research_sessions"
+
+
+def _default_regression_pack_dir(session_root: Path) -> Path:
+    configured = os.getenv("MERIDIAN_REGRESSION_PACK_DIR", "").strip()
+    if configured:
+        path = Path(configured)
+        if not path.is_absolute():
+            path = ROOT_DIR / path
+        return path
+    return session_root.parent / "regression_packs"
 
 
 class SavedTraceEvent(BaseModel):
@@ -367,9 +384,28 @@ class ResearchSessionStore:
     def __init__(self, root_dir: Path | None = None) -> None:
         self.root_dir = root_dir or _default_store_dir()
         self.root_dir.mkdir(parents=True, exist_ok=True)
+        self.regression_pack_dir = _default_regression_pack_dir(self.root_dir)
+        self.regression_pack_dir.mkdir(parents=True, exist_ok=True)
 
     def _path_for_id(self, saved_id: str) -> Path:
         return self.root_dir / f"{saved_id}.json"
+
+    def _regression_path_for_id(self, pack_id: str) -> Path:
+        return self.regression_pack_dir / f"{pack_id}.json"
+
+    def _compute_regression_pack_signature(
+        self,
+        *,
+        title: str,
+        description: str | None,
+        session_ids: list[str],
+    ) -> str:
+        payload = {
+            "title": title,
+            "description": description,
+            "session_ids": session_ids,
+        }
+        return self._hash_canonical_payload(payload)
 
     def _canonical_trace_events(self, events: list[SavedTraceEvent]) -> list[dict[str, Any]]:
         canonical_events: list[dict[str, Any]] = []
@@ -1305,6 +1341,262 @@ class ResearchSessionStore:
         records.sort(key=lambda item: item.saved_at, reverse=True)
         return records
 
+    def _write_regression_pack(self, pack: ResearchRegressionPack) -> None:
+        self._regression_path_for_id(pack.id).write_text(
+            pack.model_dump_json(indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def _load_regression_pack(self, path: Path) -> ResearchRegressionPack | None:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            return ResearchRegressionPack.model_validate(payload)
+        except Exception:
+            return None
+
+    def _all_regression_packs(self) -> list[ResearchRegressionPack]:
+        packs: list[ResearchRegressionPack] = []
+        for path in sorted(self.regression_pack_dir.glob("*.json")):
+            pack = self._load_regression_pack(path)
+            if pack is not None:
+                packs.append(pack)
+        packs.sort(key=lambda item: item.updated_at, reverse=True)
+        return packs
+
+    def _build_regression_pack_summary(self, pack: ResearchRegressionPack) -> ResearchRegressionPackSummary:
+        return ResearchRegressionPackSummary(
+            id=pack.id,
+            title=pack.title,
+            description=pack.description,
+            session_count=len(pack.session_ids),
+            created_at=pack.created_at,
+            updated_at=pack.updated_at,
+            pack_signature=pack.pack_signature,
+        )
+
+    def _normalize_regression_session_ids(self, session_ids: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in session_ids:
+            candidate = str(raw).strip()
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            normalized.append(candidate)
+        return normalized
+
+    def _normalize_template_id(self, template_id: str | None) -> ResearchTemplateId | None:
+        if template_id in {
+            "macro_outlook",
+            "event_probability_interpretation",
+            "ticker_macro_framing",
+            "thesis_change_compare",
+        }:
+            return template_id
+        return None
+
+    def _trace_step_to_saved_event(self, step: TraceStep) -> SavedTraceEvent:
+        event_type = step.type
+        event_payload: dict[str, Any] = {
+            "type": event_type,
+            "step": step.step_index,
+            "ts": step.timestamp,
+        }
+
+        if event_type == "tool_call":
+            event_payload["tool"] = step.tool_name
+            if isinstance(step.tool_args, dict):
+                event_payload["args"] = step.tool_args
+            elif step.tool_args is not None:
+                event_payload["args"] = {"raw": step.tool_args}
+        elif event_type == "tool_result":
+            event_payload["tool"] = step.tool_name
+            if isinstance(step.content, list):
+                event_payload["preview"] = step.content
+            elif step.content is None:
+                event_payload["preview"] = []
+            else:
+                event_payload["preview"] = [step.content]
+        elif event_type == "reasoning":
+            event_payload["text"] = str(step.content or "")
+        elif event_type == "brief_delta":
+            content = step.content if isinstance(step.content, dict) else {}
+            event_payload["section"] = str(content.get("section", "unknown"))
+            event_payload["text"] = str(content.get("text", ""))
+        elif event_type == "complete":
+            content = step.content if isinstance(step.content, dict) else {}
+            brief_payload = content.get("brief", content)
+            if isinstance(brief_payload, dict):
+                try:
+                    event_payload["brief"] = ResearchBrief.model_validate(brief_payload)
+                except Exception:
+                    pass
+
+            duration_ms = content.get("duration_ms")
+            if isinstance(duration_ms, (int, float)):
+                event_payload["duration_ms"] = int(duration_ms)
+
+            query_class = content.get("query_class")
+            if query_class in {"macro_outlook", "event_probability", "ticker_macro"}:
+                event_payload["query_class"] = query_class
+
+            if "session_context_used" in content:
+                event_payload["session_context_used"] = bool(content.get("session_context_used"))
+        elif event_type == "error":
+            event_payload["message"] = str(step.content or "Unknown error")
+        elif event_type == "reflection":
+            if isinstance(step.content, dict):
+                event_payload["content"] = step.content
+            elif step.content is not None:
+                event_payload["content"] = {"message": str(step.content)}
+
+        return SavedTraceEvent.model_validate(event_payload)
+
+    async def _run_regression_replay(
+        self,
+        record: SavedResearchSession,
+    ) -> tuple[ResearchBrief, ResearchEvaluationReport]:
+        agent = ResearchAgent(demo_mode=record.mode == "demo")
+        trace_events: list[SavedTraceEvent] = []
+        complete_brief: ResearchBrief | None = None
+
+        async for step in agent.run_with_context(
+            question=record.question,
+            mode=record.mode,
+            session_context=None,
+            template_id=record.template_id,
+        ):
+            event = self._trace_step_to_saved_event(step)
+            trace_events.append(event)
+            if event.type == "complete" and event.brief is not None:
+                complete_brief = event.brief
+
+        if complete_brief is None:
+            raise RuntimeError(f"Regression replay did not produce a complete brief for {record.id}")
+
+        enriched_brief = self._enrich_brief_provenance(complete_brief, mode=record.mode)
+        if record.template_id and not enriched_brief.template_id:
+            selected_template = resolve_research_template(record.template_id)
+            enriched_brief.template_id = record.template_id
+            if not enriched_brief.template_title:
+                enriched_brief.template_title = selected_template.title
+
+        evaluation = self._build_evaluation(
+            brief=enriched_brief,
+            trace_events=trace_events,
+            mode=record.mode,
+        )
+        return enriched_brief, evaluation
+
+    def _regression_session_signature(
+        self,
+        *,
+        brief: ResearchBrief,
+        evaluation_signature: str | None,
+    ) -> str:
+        payload = {
+            "query_class": brief.query_class,
+            "template_id": brief.template_id,
+            "thesis": brief.thesis,
+            "confidence": brief.confidence,
+            "bull_claim_ids": [item.claim_id for item in brief.bull_case],
+            "bear_claim_ids": [item.claim_id for item in brief.bear_case],
+            "risk_claim_ids": [item.claim_id for item in brief.key_risks],
+            "source_refs": sorted(f"{source.type}:{source.id}" for source in brief.sources),
+            "snapshot_signature": self._snapshot_signature(brief),
+            "evaluation_signature": evaluation_signature,
+        }
+        return self._hash_canonical_payload(payload)
+
+    def _build_regression_session_drift(
+        self,
+        *,
+        record: SavedResearchSession,
+        rerun_brief: ResearchBrief,
+        rerun_evaluation: ResearchEvaluationReport,
+    ) -> ResearchRegressionSessionDrift:
+        baseline_evaluation = record.evaluation or self._build_evaluation(
+            brief=record.brief,
+            trace_events=record.trace_events,
+            mode=record.mode,
+        )
+        evaluation_signature_before = baseline_evaluation.deterministic_signature
+        evaluation_signature_after = rerun_evaluation.deterministic_signature
+
+        signature_before = self._regression_session_signature(
+            brief=record.brief,
+            evaluation_signature=evaluation_signature_before,
+        )
+        signature_after = self._regression_session_signature(
+            brief=rerun_brief,
+            evaluation_signature=evaluation_signature_after,
+        )
+
+        claim_ids_before = self._claim_ids(record.brief)
+        claim_ids_after = self._claim_ids(rerun_brief)
+        claim_ids_added = sorted(claim_ids_after - claim_ids_before)
+        claim_ids_removed = sorted(claim_ids_before - claim_ids_after)
+
+        provenance_signature_before = self._snapshot_signature(record.brief)
+        provenance_signature_after = self._snapshot_signature(rerun_brief)
+
+        evaluation_passed_before = baseline_evaluation.passed
+        evaluation_passed_after = rerun_evaluation.passed
+
+        bundle_snapshot_signature_before = provenance_signature_before
+        bundle_snapshot_signature_after = provenance_signature_after
+
+        drift_payload = {
+            "saved_id": record.id,
+            "signature_before": signature_before,
+            "signature_after": signature_after,
+            "signature_changed": signature_before != signature_after,
+            "thesis_changed": record.brief.thesis != rerun_brief.thesis,
+            "confidence_changed": record.brief.confidence != rerun_brief.confidence,
+            "claim_ids_added": claim_ids_added,
+            "claim_ids_removed": claim_ids_removed,
+            "provenance_signature_before": provenance_signature_before,
+            "provenance_signature_after": provenance_signature_after,
+            "provenance_changed": provenance_signature_before != provenance_signature_after,
+            "evaluation_signature_before": evaluation_signature_before,
+            "evaluation_signature_after": evaluation_signature_after,
+            "evaluation_changed": (
+                evaluation_signature_before != evaluation_signature_after
+                or evaluation_passed_before != evaluation_passed_after
+            ),
+            "evaluation_passed_before": evaluation_passed_before,
+            "evaluation_passed_after": evaluation_passed_after,
+            "bundle_snapshot_signature_before": bundle_snapshot_signature_before,
+            "bundle_snapshot_signature_after": bundle_snapshot_signature_after,
+            "bundle_snapshot_changed": bundle_snapshot_signature_before != bundle_snapshot_signature_after,
+        }
+        drift_signature = self._hash_canonical_payload(drift_payload)
+
+        return ResearchRegressionSessionDrift(
+            saved_id=record.id,
+            question=record.question,
+            template_id=self._normalize_template_id(record.template_id),
+            signature_before=signature_before,
+            signature_after=signature_after,
+            signature_changed=drift_payload["signature_changed"],
+            thesis_changed=drift_payload["thesis_changed"],
+            confidence_changed=drift_payload["confidence_changed"],
+            claim_ids_added=claim_ids_added,
+            claim_ids_removed=claim_ids_removed,
+            provenance_signature_before=provenance_signature_before,
+            provenance_signature_after=provenance_signature_after,
+            provenance_changed=drift_payload["provenance_changed"],
+            evaluation_signature_before=evaluation_signature_before,
+            evaluation_signature_after=evaluation_signature_after,
+            evaluation_changed=drift_payload["evaluation_changed"],
+            evaluation_passed_before=evaluation_passed_before,
+            evaluation_passed_after=evaluation_passed_after,
+            bundle_snapshot_signature_before=bundle_snapshot_signature_before,
+            bundle_snapshot_signature_after=bundle_snapshot_signature_after,
+            bundle_snapshot_changed=drift_payload["bundle_snapshot_changed"],
+            drift_signature=drift_signature,
+        )
+
     def _build_summary(self, record: SavedResearchSession) -> SavedResearchSessionSummary:
         snapshot_summary = (
             record.brief.snapshot_summary
@@ -1818,6 +2110,132 @@ class ResearchSessionStore:
                 transitions=changed_transitions,
                 generated_at=_iso_now(),
             ),
+        )
+
+    def create_regression_pack(self, request: CreateRegressionPackRequest) -> ResearchRegressionPack:
+        session_ids = self._normalize_regression_session_ids(request.session_ids)
+        if not session_ids:
+            raise ValueError("Regression pack requires at least one saved session id")
+
+        missing_session_ids = [saved_id for saved_id in session_ids if self.get(saved_id) is None]
+        if missing_session_ids:
+            raise ValueError(f"Unknown saved session ids: {', '.join(sorted(missing_session_ids))}")
+
+        timestamp = _iso_now()
+        pack_id = f"rpack-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
+        pack_signature = self._compute_regression_pack_signature(
+            title=request.title,
+            description=request.description,
+            session_ids=session_ids,
+        )
+
+        pack = ResearchRegressionPack(
+            id=pack_id,
+            title=request.title,
+            description=request.description,
+            session_ids=session_ids,
+            created_at=timestamp,
+            updated_at=timestamp,
+            pack_signature=pack_signature,
+        )
+        self._write_regression_pack(pack)
+        return pack
+
+    def list_regression_packs(self) -> list[ResearchRegressionPackSummary]:
+        return [self._build_regression_pack_summary(pack) for pack in self._all_regression_packs()]
+
+    def get_regression_pack(self, pack_id: str) -> ResearchRegressionPack | None:
+        path = self._regression_path_for_id(pack_id)
+        if not path.exists():
+            return None
+        return self._load_regression_pack(path)
+
+    def delete_regression_pack(self, pack_id: str) -> bool:
+        path = self._regression_path_for_id(pack_id)
+        if not path.exists():
+            return False
+        path.unlink()
+        return True
+
+    async def run_regression_pack(self, pack_id: str) -> ResearchRegressionPackRun | None:
+        pack = self.get_regression_pack(pack_id)
+        if pack is None:
+            return None
+
+        drifts: list[ResearchRegressionSessionDrift] = []
+        for saved_id in pack.session_ids:
+            record = self.get(saved_id)
+            if record is None:
+                continue
+
+            try:
+                rerun_brief, rerun_evaluation = await self._run_regression_replay(record)
+            except Exception:
+                continue
+
+            drifts.append(
+                self._build_regression_session_drift(
+                    record=record,
+                    rerun_brief=rerun_brief,
+                    rerun_evaluation=rerun_evaluation,
+                )
+            )
+
+        session_count = len(pack.session_ids)
+        compared_count = len(drifts)
+        changed_count = sum(
+            1
+            for drift in drifts
+            if (
+                drift.signature_changed
+                or drift.thesis_changed
+                or drift.confidence_changed
+                or drift.provenance_changed
+                or drift.evaluation_changed
+                or drift.bundle_snapshot_changed
+                or bool(drift.claim_ids_added or drift.claim_ids_removed)
+            )
+        )
+        unchanged_count = max(0, compared_count - changed_count)
+        thesis_drift_count = sum(1 for drift in drifts if drift.thesis_changed)
+        claim_drift_count = sum(
+            1 for drift in drifts if drift.claim_ids_added or drift.claim_ids_removed
+        )
+        provenance_drift_count = sum(1 for drift in drifts if drift.provenance_changed)
+        evaluation_drift_count = sum(1 for drift in drifts if drift.evaluation_changed)
+        bundle_drift_count = sum(1 for drift in drifts if drift.bundle_snapshot_changed)
+
+        signature_payload = {
+            "pack_id": pack.id,
+            "pack_signature": pack.pack_signature,
+            "session_ids": pack.session_ids,
+            "session_count": session_count,
+            "compared_count": compared_count,
+            "changed_count": changed_count,
+            "unchanged_count": unchanged_count,
+            "thesis_drift_count": thesis_drift_count,
+            "claim_drift_count": claim_drift_count,
+            "provenance_drift_count": provenance_drift_count,
+            "evaluation_drift_count": evaluation_drift_count,
+            "bundle_drift_count": bundle_drift_count,
+            "drifts": [drift.model_dump(exclude_none=True) for drift in drifts],
+        }
+        deterministic_signature = self._hash_canonical_payload(signature_payload)
+
+        return ResearchRegressionPackRun(
+            pack_id=pack.id,
+            generated_at=_iso_now(),
+            session_count=session_count,
+            compared_count=compared_count,
+            changed_count=changed_count,
+            unchanged_count=unchanged_count,
+            thesis_drift_count=thesis_drift_count,
+            claim_drift_count=claim_drift_count,
+            provenance_drift_count=provenance_drift_count,
+            evaluation_drift_count=evaluation_drift_count,
+            bundle_drift_count=bundle_drift_count,
+            deterministic_signature=deterministic_signature,
+            drifts=drifts,
         )
 
     def list_sessions(

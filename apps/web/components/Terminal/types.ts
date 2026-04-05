@@ -128,6 +128,67 @@ export type ResearchEvaluationDashboard = {
   filters: Record<string, unknown>
 }
 
+export type ResearchRegressionPackSummary = {
+  id: string
+  title: string
+  description?: string | null
+  session_count: number
+  created_at: string
+  updated_at: string
+  pack_signature: string
+}
+
+export type ResearchRegressionPack = {
+  id: string
+  title: string
+  description?: string | null
+  session_ids: string[]
+  created_at: string
+  updated_at: string
+  pack_signature: string
+}
+
+export type ResearchRegressionSessionDrift = {
+  saved_id: string
+  question: string
+  template_id?: ResearchTemplateId | null
+  signature_before: string
+  signature_after: string
+  signature_changed: boolean
+  thesis_changed: boolean
+  confidence_changed: boolean
+  claim_ids_added: string[]
+  claim_ids_removed: string[]
+  provenance_signature_before: string
+  provenance_signature_after: string
+  provenance_changed: boolean
+  evaluation_signature_before?: string | null
+  evaluation_signature_after?: string | null
+  evaluation_changed: boolean
+  evaluation_passed_before?: boolean | null
+  evaluation_passed_after?: boolean | null
+  bundle_snapshot_signature_before?: string | null
+  bundle_snapshot_signature_after?: string | null
+  bundle_snapshot_changed: boolean
+  drift_signature: string
+}
+
+export type ResearchRegressionPackRun = {
+  pack_id: string
+  generated_at: string
+  session_count: number
+  compared_count: number
+  changed_count: number
+  unchanged_count: number
+  thesis_drift_count: number
+  claim_drift_count: number
+  provenance_drift_count: number
+  evaluation_drift_count: number
+  bundle_drift_count: number
+  deterministic_signature: string
+  drifts: ResearchRegressionSessionDrift[]
+}
+
 export type BriefPoint = {
   claim_id: string
   point: string

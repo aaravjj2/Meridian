@@ -142,6 +142,80 @@ Builder semantics:
 - `stale_source_count: int`
 - `claim_linking_gap_count: int`
 
+## ResearchRegressionPack
+
+- `id: str` (must start with `rpack-`)
+- `title: str` (1..120 chars, trimmed)
+- `description: str | null` (trimmed, max 500)
+- `session_ids: list[str]` (ordered saved-session ids)
+- `created_at: str (ISO)`
+- `updated_at: str (ISO)`
+- `pack_signature: str` (deterministic SHA256 over title/description/session_ids)
+
+## ResearchRegressionPackSummary
+
+- `id: str`
+- `title: str`
+- `description: str | null`
+- `session_count: int`
+- `created_at: str (ISO)`
+- `updated_at: str (ISO)`
+- `pack_signature: str`
+
+## CreateRegressionPackRequest
+
+- `title: str` (required, trimmed, non-empty)
+- `description: str | null` (optional)
+- `session_ids: list[str]` (required, min length 1)
+
+## ResearchRegressionSessionDrift
+
+- `saved_id: str`
+- `question: str`
+- `template_id: ResearchTemplateId | null`
+- `signature_before: str`
+- `signature_after: str`
+- `signature_changed: bool`
+- `thesis_changed: bool`
+- `confidence_changed: bool`
+- `claim_ids_added: list[str]`
+- `claim_ids_removed: list[str]`
+- `provenance_signature_before: str`
+- `provenance_signature_after: str`
+- `provenance_changed: bool`
+- `evaluation_signature_before: str | null`
+- `evaluation_signature_after: str | null`
+- `evaluation_changed: bool`
+- `evaluation_passed_before: bool | null`
+- `evaluation_passed_after: bool | null`
+- `bundle_snapshot_signature_before: str | null`
+- `bundle_snapshot_signature_after: str | null`
+- `bundle_snapshot_changed: bool`
+- `drift_signature: str`
+
+## ResearchRegressionPackRun
+
+- `pack_id: str`
+- `generated_at: str (ISO)`
+- `session_count: int`
+- `compared_count: int`
+- `changed_count: int`
+- `unchanged_count: int`
+- `thesis_drift_count: int`
+- `claim_drift_count: int`
+- `provenance_drift_count: int`
+- `evaluation_drift_count: int`
+- `bundle_drift_count: int`
+- `deterministic_signature: str`
+- `drifts: list[ResearchRegressionSessionDrift]`
+
+Semantics:
+
+- `session_count`: configured pack size
+- `compared_count`: sessions successfully replayed and compared
+- `changed_count`: sessions with any meaningful drift (`signature|thesis|confidence|claims|provenance|evaluation|bundle`)
+- `deterministic_signature`: stable hash over run projection for audit replay
+
 ## ResearchReviewChecklist
 
 - `saved_id: str | null`

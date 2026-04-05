@@ -123,7 +123,7 @@ Meridian is a full-stack financial research platform that leverages GLM-5.1's ag
 **Location**: `apps/api/`, `src/meridian/`
 
 **Key Modules**:
-- **Routers**: REST endpoints for research, screener, regime, markets, collections
+- **Routers**: REST endpoints for research, screener, regime, markets, collections, workspace regression packs
 - **Agent**: GLM-5.1 ReAct loop implementation
 - **Tools**: Type-safe tool registry with 10+ data sources
 - **WebSocket**: Real-time bidirectional communication
@@ -395,6 +395,12 @@ Wave 18 adds a builder-facing deterministic evaluation dashboard over saved sess
 workspace quality signals (pass/fail counts, recurring failed check ids, provenance gaps, stale-source incidence,
 claim-linking gaps, and template usage) and emits a stable `deterministic_signature` so quality monitoring can be
 reused and compared over time. A guarded JSON export path is exposed only when aggregate quality is clean.
+
+Wave 19 adds deterministic session regression packs so builders can preserve replay cohorts and re-run drift checks
+on demand. Regression packs persist an ordered saved-session set with a stable `pack_signature`, and workspace/API
+surfaces can execute replay runs that emit compact per-session drift payloads (`ResearchRegressionSessionDrift`) plus
+an aggregate `ResearchRegressionPackRun` signature. This creates an auditable memory of regression cohorts while
+keeping replay results exportable for release reviews.
 
 ---
 
