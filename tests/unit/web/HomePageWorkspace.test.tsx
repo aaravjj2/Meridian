@@ -748,6 +748,76 @@ describe('HomePage workspace persistence', () => {
           issue_count: 0,
         })
       ),
+      http.get('/api/v1/research/sessions/evaluation/dashboard', () =>
+        HttpResponse.json({
+          generated_at: '2026-04-03T10:12:00Z',
+          session_count: 2,
+          passed_count: 1,
+          failed_count: 1,
+          pass_rate: 0.5,
+          provenance_gap_session_count: 0,
+          provenance_gap_total_count: 0,
+          stale_source_session_count: 0,
+          stale_source_total_count: 0,
+          claim_linking_gap_session_count: 1,
+          claim_linking_gap_total_count: 1,
+          common_failure_types: [
+            { check_id: 'claim_source_coverage', count: 1 },
+            { check_id: 'trace_step_order', count: 1 },
+          ],
+          template_usage: {
+            macro_outlook: 1,
+            event_probability_interpretation: 1,
+          },
+          sessions: [
+            {
+              id: savedSummary.id,
+              saved_at: savedSummary.saved_at,
+              query_class: savedSummary.query_class,
+              template_id: 'macro_outlook',
+              template_title: 'Macro outlook',
+              evaluation_passed: true,
+              evaluation_signature: 'eval-abc123',
+              failed_checks: [],
+              provenance_gap_count: 0,
+              stale_source_count: 0,
+              claim_linking_gap_count: 0,
+            },
+            {
+              id: savedSummaryTwo.id,
+              saved_at: savedSummaryTwo.saved_at,
+              query_class: savedSummaryTwo.query_class,
+              template_id: 'event_probability_interpretation',
+              template_title: 'Event probability interpretation',
+              evaluation_passed: false,
+              evaluation_signature: 'eval-def456',
+              failed_checks: ['claim_source_coverage', 'trace_step_order'],
+              provenance_gap_count: 0,
+              stale_source_count: 0,
+              claim_linking_gap_count: 1,
+            },
+          ],
+          deterministic_signature: 'dashboard-sig-123',
+          ready_for_export: true,
+          filters: {
+            search: null,
+            include_archived: false,
+            query_class: null,
+          },
+        })
+      ),
+      http.get('/api/v1/research/sessions/evaluation/dashboard/export', () =>
+        HttpResponse.json(
+          {
+            exported: true,
+          },
+          {
+            headers: {
+              'content-disposition': 'attachment; filename=workspace-evaluation-dashboard.json',
+            },
+          }
+        )
+      ),
       http.get('/api/v1/research/sessions/:savedId', ({ params }) => {
         if (params.savedId === savedSummaryTwo.id) {
           return HttpResponse.json(savedRecordTwo)
@@ -836,6 +906,17 @@ describe('HomePage workspace persistence', () => {
 
     fireEvent.click(screen.getByTestId('workspace-integrity-run-all'))
     expect(await screen.findByTestId('workspace-integrity-overview')).toHaveTextContent('Checked 2 sessions')
+
+    fireEvent.click(screen.getByTestId('workspace-evaluation-dashboard-run'))
+    expect(await screen.findByTestId('workspace-evaluation-dashboard-result')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-evaluation-dashboard-pass-rate')).toHaveTextContent('50.0%')
+    expect(screen.getByTestId('workspace-evaluation-dashboard-failure-0')).toHaveTextContent('claim_source_coverage: 1')
+    expect(screen.getByTestId('workspace-evaluation-dashboard-template-usage')).toHaveTextContent('macro_outlook:1')
+
+    fireEvent.click(screen.getByTestId('workspace-evaluation-dashboard-export'))
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-status')).toHaveTextContent('Exported workspace evaluation dashboard summary')
+    })
 
     fireEvent.change(screen.getByTestId('workspace-search-input'), {
       target: { value: 'Second' },

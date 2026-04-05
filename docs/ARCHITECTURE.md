@@ -391,6 +391,11 @@ snapshot kind and cache lineage. Snapshot/provenance summaries include determini
 summary (`latest_fetched_at`, `latest_cached_at`, `latest_generated_at`) so fixture/cached/live behavior remains
 auditable instead of implicit.
 
+Wave 18 adds a builder-facing deterministic evaluation dashboard over saved sessions. The dashboard aggregates
+workspace quality signals (pass/fail counts, recurring failed check ids, provenance gaps, stale-source incidence,
+claim-linking gaps, and template usage) and emits a stable `deterministic_signature` so quality monitoring can be
+reused and compared over time. A guarded JSON export path is exposed only when aggregate quality is clean.
+
 ---
 
 ## Deployment Architecture

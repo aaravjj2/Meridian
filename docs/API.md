@@ -349,6 +349,37 @@ Wave 10 evaluation check:
 
 - `freshness_policy_compliance`: verifies source freshness against policy thresholds by source type
 
+### GET /api/v1/research/sessions/evaluation/dashboard
+
+Builds the Wave 18 deterministic workspace evaluation dashboard across matching saved sessions.
+
+Query parameters:
+
+- `search` (optional)
+- `include_archived` (optional, default `false`)
+- `query_class` (optional `macro_outlook | event_probability | ticker_macro`)
+
+Response highlights:
+
+- `session_count`, `passed_count`, `failed_count`, `pass_rate`
+- `common_failure_types[]` (`check_id`, `count`)
+- `provenance_gap_session_count`, `provenance_gap_total_count`
+- `stale_source_session_count`, `stale_source_total_count`
+- `claim_linking_gap_session_count`, `claim_linking_gap_total_count`
+- `template_usage` (template-id frequency map)
+- `sessions[]` compact per-session quality rows
+- `deterministic_signature` (stable hash over dashboard projection)
+- `ready_for_export` (true only when the dashboard is clean enough for export)
+
+### GET /api/v1/research/sessions/evaluation/dashboard/export
+
+Exports the Wave 18 dashboard as downloadable JSON when `ready_for_export` is true.
+
+Behavior:
+
+- returns `application/json` attachment when clean
+- returns HTTP `409` if dashboard quality is not clean enough for export
+
 ### GET /api/v1/research/sessions/{saved_id}/integrity
 
 Runs integrity checks for a single saved session.

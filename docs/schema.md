@@ -101,6 +101,47 @@ Wave 10 freshness policy check includes:
 
 - `freshness_policy_compliance`
 
+## ResearchEvaluationDashboard
+
+- `generated_at: str (ISO)`
+- `session_count: int`
+- `passed_count: int`
+- `failed_count: int`
+- `pass_rate: float` (`0.0..1.0`)
+- `provenance_gap_session_count: int`
+- `provenance_gap_total_count: int`
+- `stale_source_session_count: int`
+- `stale_source_total_count: int`
+- `claim_linking_gap_session_count: int`
+- `claim_linking_gap_total_count: int`
+- `common_failure_types: list[{ check_id, count }]`
+- `template_usage: dict[str, int]`
+- `sessions: list[ResearchEvaluationDashboardSession]`
+- `deterministic_signature: str`
+- `ready_for_export: bool`
+- `filters: { search, include_archived, query_class }`
+
+Builder semantics:
+
+- deterministic workspace-level quality monitoring over saved sessions
+- captures recurring failure modes by check id
+- tracks provenance, stale-source, and claim-linking gap incidence
+- marks when aggregate quality is clean enough for JSON export
+
+## ResearchEvaluationDashboardSession
+
+- `id: str`
+- `saved_at: str (ISO)`
+- `query_class: "macro_outlook" | "event_probability" | "ticker_macro" | null`
+- `template_id: ResearchTemplateId | null`
+- `template_title: str | null`
+- `evaluation_passed: bool`
+- `evaluation_signature: str | null`
+- `failed_checks: list[str]`
+- `provenance_gap_count: int`
+- `stale_source_count: int`
+- `claim_linking_gap_count: int`
+
 ## ResearchReviewChecklist
 
 - `saved_id: str | null`

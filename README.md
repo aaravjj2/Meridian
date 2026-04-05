@@ -252,6 +252,8 @@ Meridian supports a single-user research workspace directly in the terminal flow
 - Compare conflict drift between sessions with resolved/unchanged/worsened states linked to claim/source/snapshot deltas
 - Distinguish fixture, cache, live-capture, and derived snapshot states with cache-lineage labels
 - Surface explicit source state labels (`fixture|cached|live|derived`) and latest fetched/cached/generated timestamps across research, workspace summaries, and bundle exports
+- Run a deterministic builder-facing evaluation dashboard across saved sessions with pass/fail counts, recurring failed checks, provenance gaps, stale-source incidence, claim-linking gaps, and template usage
+- Export evaluation-dashboard JSON summaries when aggregate quality is clean enough for release audit handoff
 - Expose snapshot summary metadata (kind counts, lineage counts, checksum coverage) in terminal/workspace UI
 - Generate deterministic snapshot-aware evaluation checks with stable signatures for audit/replay confidence
 - Run integrity checks that validate snapshot completeness/consistency alongside canonical signatures

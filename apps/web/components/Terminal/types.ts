@@ -89,6 +89,45 @@ export type ResearchEvaluationReport = {
   metrics: Record<string, unknown>
 }
 
+export type ResearchEvaluationDashboardFailureType = {
+  check_id: string
+  count: number
+}
+
+export type ResearchEvaluationDashboardSession = {
+  id: string
+  saved_at: string
+  query_class?: ResearchBrief['query_class']
+  template_id?: ResearchTemplateId | null
+  template_title?: string | null
+  evaluation_passed: boolean
+  evaluation_signature?: string | null
+  failed_checks: string[]
+  provenance_gap_count: number
+  stale_source_count: number
+  claim_linking_gap_count: number
+}
+
+export type ResearchEvaluationDashboard = {
+  generated_at: string
+  session_count: number
+  passed_count: number
+  failed_count: number
+  pass_rate: number
+  provenance_gap_session_count: number
+  provenance_gap_total_count: number
+  stale_source_session_count: number
+  stale_source_total_count: number
+  claim_linking_gap_session_count: number
+  claim_linking_gap_total_count: number
+  common_failure_types: ResearchEvaluationDashboardFailureType[]
+  template_usage: Record<string, number>
+  sessions: ResearchEvaluationDashboardSession[]
+  deterministic_signature: string
+  ready_for_export: boolean
+  filters: Record<string, unknown>
+}
+
 export type BriefPoint = {
   claim_id: string
   point: string

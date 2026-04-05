@@ -15,6 +15,9 @@ from meridian.agent.templates import resolve_research_template
 from meridian.normalisation.schemas import (
     ResearchBrief,
     ResearchCollectionTimelineEntry,
+    ResearchEvaluationDashboard,
+    ResearchEvaluationDashboardFailureType,
+    ResearchEvaluationDashboardSession,
     ResearchEvaluationCheck,
     ResearchEvaluationReport,
     ResearchReviewChecklist,
@@ -812,6 +815,17 @@ class ResearchSessionStore:
             *[item.claim_id for item in brief.bear_case],
             *[item.claim_id for item in brief.key_risks],
         }
+
+    def _claim_linking_gap_count(self, brief: ResearchBrief) -> int:
+        claim_ids = self._claim_ids(brief)
+        if not claim_ids:
+            return 0
+        linked_claim_ids = {
+            claim_ref
+            for source in brief.sources
+            for claim_ref in source.claim_refs
+        }
+        return len(claim_ids - linked_claim_ids)
 
     def _build_evaluation(
         self,
@@ -1826,6 +1840,155 @@ class ResearchSessionStore:
 
         sessions.sort(key=lambda item: item.saved_at, reverse=True)
         return sessions
+
+    def build_evaluation_dashboard(
+        self,
+        *,
+        search: str | None = None,
+        include_archived: bool = False,
+        query_class: QueryClass | None = None,
+    ) -> ResearchEvaluationDashboard:
+        rows: list[ResearchEvaluationDashboardSession] = []
+        failure_type_counts: Counter[str] = Counter()
+        template_usage: Counter[str] = Counter()
+
+        passed_count = 0
+        failed_count = 0
+        provenance_gap_session_count = 0
+        provenance_gap_total_count = 0
+        stale_source_session_count = 0
+        stale_source_total_count = 0
+        claim_linking_gap_session_count = 0
+        claim_linking_gap_total_count = 0
+
+        for record in self._all_records():
+            if not self._matches_filters(
+                record=record,
+                search=search,
+                include_archived=include_archived,
+                query_class=query_class,
+            ):
+                continue
+
+            evaluation = record.evaluation or self._build_evaluation(
+                brief=record.brief,
+                trace_events=record.trace_events,
+                mode=record.mode,
+            )
+            failed_checks = sorted(check.check_id for check in evaluation.checks if not check.passed)
+            for check_id in failed_checks:
+                failure_type_counts[check_id] += 1
+
+            provenance_gap_count = sum(
+                1 for source in record.brief.sources if source.provenance is None
+            )
+            stale_source_count = sum(
+                1
+                for source in record.brief.sources
+                if source.provenance is not None and source.provenance.freshness == "stale"
+            )
+            claim_linking_gap_count = self._claim_linking_gap_count(record.brief)
+
+            if evaluation.passed:
+                passed_count += 1
+            else:
+                failed_count += 1
+
+            if provenance_gap_count > 0:
+                provenance_gap_session_count += 1
+                provenance_gap_total_count += provenance_gap_count
+            if stale_source_count > 0:
+                stale_source_session_count += 1
+                stale_source_total_count += stale_source_count
+            if claim_linking_gap_count > 0:
+                claim_linking_gap_session_count += 1
+                claim_linking_gap_total_count += claim_linking_gap_count
+
+            template_usage_key = str(record.template_id or "none")
+            template_usage[template_usage_key] += 1
+
+            rows.append(
+                ResearchEvaluationDashboardSession(
+                    id=record.id,
+                    saved_at=record.saved_at,
+                    query_class=record.query_class,
+                    template_id=record.template_id,
+                    template_title=record.template_title,
+                    evaluation_passed=evaluation.passed,
+                    evaluation_signature=evaluation.deterministic_signature,
+                    failed_checks=failed_checks,
+                    provenance_gap_count=provenance_gap_count,
+                    stale_source_count=stale_source_count,
+                    claim_linking_gap_count=claim_linking_gap_count,
+                )
+            )
+
+        rows.sort(key=lambda item: item.saved_at, reverse=True)
+        session_count = len(rows)
+        pass_rate = round((passed_count / session_count), 4) if session_count else 0.0
+
+        common_failure_types = [
+            ResearchEvaluationDashboardFailureType(check_id=check_id, count=count)
+            for check_id, count in sorted(
+                failure_type_counts.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ]
+        template_usage_map = {
+            key: template_usage[key]
+            for key in sorted(template_usage)
+        }
+        filters: dict[str, Any] = {
+            "search": search.strip() if search else None,
+            "include_archived": include_archived,
+            "query_class": query_class,
+        }
+
+        signature_payload = {
+            "filters": filters,
+            "session_count": session_count,
+            "passed_count": passed_count,
+            "failed_count": failed_count,
+            "pass_rate": pass_rate,
+            "provenance_gap_session_count": provenance_gap_session_count,
+            "provenance_gap_total_count": provenance_gap_total_count,
+            "stale_source_session_count": stale_source_session_count,
+            "stale_source_total_count": stale_source_total_count,
+            "claim_linking_gap_session_count": claim_linking_gap_session_count,
+            "claim_linking_gap_total_count": claim_linking_gap_total_count,
+            "common_failure_types": [item.model_dump() for item in common_failure_types],
+            "template_usage": template_usage_map,
+            "sessions": [item.model_dump(exclude_none=True) for item in rows],
+        }
+        deterministic_signature = self._hash_canonical_payload(signature_payload)
+
+        ready_for_export = (
+            session_count > 0
+            and failed_count == 0
+            and provenance_gap_session_count == 0
+            and stale_source_session_count == 0
+            and claim_linking_gap_session_count == 0
+        )
+
+        return ResearchEvaluationDashboard(
+            generated_at=_iso_now(),
+            session_count=session_count,
+            passed_count=passed_count,
+            failed_count=failed_count,
+            pass_rate=pass_rate,
+            provenance_gap_session_count=provenance_gap_session_count,
+            provenance_gap_total_count=provenance_gap_total_count,
+            stale_source_session_count=stale_source_session_count,
+            stale_source_total_count=stale_source_total_count,
+            claim_linking_gap_session_count=claim_linking_gap_session_count,
+            claim_linking_gap_total_count=claim_linking_gap_total_count,
+            common_failure_types=common_failure_types,
+            template_usage=template_usage_map,
+            sessions=rows,
+            deterministic_signature=deterministic_signature,
+            ready_for_export=ready_for_export,
+            filters=filters,
+        )
 
     def get(self, saved_id: str) -> SavedResearchSession | None:
         path = self._path_for_id(saved_id)

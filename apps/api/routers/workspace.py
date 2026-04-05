@@ -58,6 +58,48 @@ async def verify_saved_sessions_integrity(
     }
 
 
+@router.get("/research/sessions/evaluation/dashboard")
+async def get_workspace_evaluation_dashboard(
+    search: str | None = Query(default=None, max_length=120),
+    include_archived: bool = Query(default=False),
+    query_class: QueryClass | None = Query(default=None),
+) -> dict[str, object]:
+    store = get_session_store()
+    dashboard = store.build_evaluation_dashboard(
+        search=search,
+        include_archived=include_archived,
+        query_class=query_class,
+    )
+    return dashboard.model_dump()
+
+
+@router.get("/research/sessions/evaluation/dashboard/export")
+async def export_workspace_evaluation_dashboard(
+    search: str | None = Query(default=None, max_length=120),
+    include_archived: bool = Query(default=False),
+    query_class: QueryClass | None = Query(default=None),
+) -> Response:
+    store = get_session_store()
+    dashboard = store.build_evaluation_dashboard(
+        search=search,
+        include_archived=include_archived,
+        query_class=query_class,
+    )
+    if not dashboard.ready_for_export:
+        raise HTTPException(
+            status_code=409,
+            detail="Evaluation dashboard is not clean enough for export",
+        )
+
+    timestamp = dashboard.generated_at.replace(":", "").replace("-", "")
+    filename = f"workspace-evaluation-dashboard-{timestamp}.json"
+    return Response(
+        content=dashboard.model_dump_json(indent=2) + "\n",
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.get("/research/sessions/compare")
 async def compare_saved_sessions(
     left_id: str = Query(min_length=4),

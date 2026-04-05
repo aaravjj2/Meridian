@@ -14,6 +14,7 @@ import type {
   EvidenceNavigationState,
   ResearchCollection,
   ResearchCollectionSummary,
+  ResearchEvaluationDashboard,
   ResearchEvaluationReport,
   ResearchBrief,
   ResearchReviewChecklist,
@@ -534,6 +535,44 @@ async function getWorkspaceIntegrity(options?: { search?: string; includeArchive
   return payload.reports ?? []
 }
 
+async function getWorkspaceEvaluationDashboard(options?: ListSavedSessionsOptions): Promise<ResearchEvaluationDashboard> {
+  const params = new URLSearchParams()
+  if (options?.search?.trim()) {
+    params.set('search', options.search.trim())
+  }
+  if (options?.includeArchived) {
+    params.set('include_archived', 'true')
+  }
+  if (options?.queryClass && options.queryClass !== 'all') {
+    params.set('query_class', options.queryClass)
+  }
+  const query = params.toString()
+  const response = await fetch(`/api/v1/research/sessions/evaluation/dashboard${query ? `?${query}` : ''}`)
+  if (!response.ok) {
+    throw new Error(`Failed to build evaluation dashboard: ${response.status}`)
+  }
+  return (await response.json()) as ResearchEvaluationDashboard
+}
+
+async function exportWorkspaceEvaluationDashboard(options?: ListSavedSessionsOptions): Promise<Response> {
+  const params = new URLSearchParams()
+  if (options?.search?.trim()) {
+    params.set('search', options.search.trim())
+  }
+  if (options?.includeArchived) {
+    params.set('include_archived', 'true')
+  }
+  if (options?.queryClass && options.queryClass !== 'all') {
+    params.set('query_class', options.queryClass)
+  }
+  const query = params.toString()
+  const response = await fetch(`/api/v1/research/sessions/evaluation/dashboard/export${query ? `?${query}` : ''}`)
+  if (!response.ok) {
+    throw new Error(`Failed to export evaluation dashboard: ${response.status}`)
+  }
+  return response
+}
+
 type CollectionDetailResponse = {
   collection: Omit<ResearchCollection, 'timeline' | 'missing_session_count' | 'timeline_signature'>
   timeline?: ResearchCollection['timeline']
@@ -732,6 +771,8 @@ export default function HomePage() {
   const [integrityOverview, setIntegrityOverview] = useState<{ count: number; issueCount: number } | null>(null)
   const [reviewBusy, setReviewBusy] = useState(false)
   const [reviewChecklist, setReviewChecklist] = useState<ResearchReviewChecklist | null>(null)
+  const [evaluationDashboardBusy, setEvaluationDashboardBusy] = useState(false)
+  const [evaluationDashboard, setEvaluationDashboard] = useState<ResearchEvaluationDashboard | null>(null)
   const [collectionsState, setCollectionsState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [collectionsError, setCollectionsError] = useState('')
   const [collections, setCollections] = useState<ResearchCollectionSummary[]>([])
@@ -800,6 +841,10 @@ export default function HomePage() {
   useEffect(() => {
     void loadWorkspaceSessions()
   }, [loadWorkspaceSessions])
+
+  useEffect(() => {
+    setEvaluationDashboard(null)
+  }, [workspaceSearch, includeArchived, queryClassFilter])
 
   useEffect(() => {
     let active = true
@@ -1077,6 +1122,7 @@ export default function HomePage() {
         setIntegrityReport(null)
         setIntegrityOverview(null)
         setReviewChecklist(null)
+        setEvaluationDashboard(null)
         if (saved.follow_up_context) {
           setFollowUpHint(saved.follow_up_context)
         }
@@ -1119,6 +1165,7 @@ export default function HomePage() {
       setIntegrityReport(null)
       setIntegrityOverview(null)
       setReviewChecklist(null)
+      setEvaluationDashboard(null)
       setWorkspaceStatus(`Reopened session ${saved.id}`)
     } catch (reopenError) {
       setWorkspaceStatus(reopenError instanceof Error ? reopenError.message : 'Failed to reopen session')
@@ -1274,6 +1321,7 @@ export default function HomePage() {
         setIntegrityReport(null)
         setIntegrityOverview(null)
         setReviewChecklist(null)
+        setEvaluationDashboard(null)
         setWorkspaceStatus(`Recaptured ${savedId} -> ${recaptured.saved.id}`)
       } catch (recaptureError) {
         setWorkspaceStatus(recaptureError instanceof Error ? recaptureError.message : 'Recapture failed')
@@ -1356,6 +1404,46 @@ export default function HomePage() {
     }
   }, [])
 
+  const runWorkspaceEvaluationDashboard = useCallback(async () => {
+    setEvaluationDashboardBusy(true)
+    try {
+      const dashboard = await getWorkspaceEvaluationDashboard({
+        search: workspaceSearch,
+        includeArchived,
+        queryClass: queryClassFilter,
+      })
+      setEvaluationDashboard(dashboard)
+      setWorkspaceStatus(
+        `Dashboard ready: ${dashboard.passed_count}/${dashboard.session_count} sessions passing` +
+          ` (${(dashboard.pass_rate * 100).toFixed(1)}%)`
+      )
+    } catch (dashboardError) {
+      setWorkspaceStatus(dashboardError instanceof Error ? dashboardError.message : 'Evaluation dashboard failed')
+    } finally {
+      setEvaluationDashboardBusy(false)
+    }
+  }, [includeArchived, queryClassFilter, workspaceSearch])
+
+  const exportWorkspaceEvaluationSummary = useCallback(async () => {
+    setEvaluationDashboardBusy(true)
+    try {
+      const response = await exportWorkspaceEvaluationDashboard({
+        search: workspaceSearch,
+        includeArchived,
+        queryClass: queryClassFilter,
+      })
+      const blob = await response.blob()
+      triggerDownload(response, blob)
+      setWorkspaceStatus('Exported workspace evaluation dashboard summary')
+    } catch (dashboardError) {
+      setWorkspaceStatus(
+        dashboardError instanceof Error ? dashboardError.message : 'Evaluation dashboard export failed'
+      )
+    } finally {
+      setEvaluationDashboardBusy(false)
+    }
+  }, [includeArchived, queryClassFilter, workspaceSearch])
+
   async function runQuery(question: string) {
     const priorQuestion = queryHistory.length > 0 ? queryHistory[queryHistory.length - 1] : null
 
@@ -1370,6 +1458,7 @@ export default function HomePage() {
     setEvidenceState(EMPTY_EVIDENCE_STATE)
     setEvaluation(null)
     setReviewChecklist(null)
+    setEvaluationDashboard(null)
     setEvidenceHydrationKey((previous) => previous + 1)
     setWorkspaceStatus(null)
 
@@ -1448,6 +1537,7 @@ export default function HomePage() {
               comparisonBusy={comparisonBusy}
               integrityBusy={integrityBusy}
               reviewBusy={reviewBusy}
+              evaluationDashboardBusy={evaluationDashboardBusy}
               searchValue={workspaceSearch}
               includeArchived={includeArchived}
               queryClassFilter={queryClassFilter}
@@ -1455,6 +1545,7 @@ export default function HomePage() {
               recaptureLineage={recaptureLineage}
               integrityReport={integrityReport}
               reviewChecklist={reviewChecklist}
+              evaluationDashboard={evaluationDashboard}
               integrityOverview={integrityOverview}
               statusMessage={workspaceStatus}
               collectionState={collectionsState}
@@ -1545,6 +1636,12 @@ export default function HomePage() {
               }}
               onVerifyWorkspaceIntegrity={() => {
                 void verifyWorkspaceIntegrity()
+              }}
+              onRunEvaluationDashboard={() => {
+                void runWorkspaceEvaluationDashboard()
+              }}
+              onExportEvaluationDashboard={() => {
+                void exportWorkspaceEvaluationSummary()
               }}
             />
             <ResearchPanel

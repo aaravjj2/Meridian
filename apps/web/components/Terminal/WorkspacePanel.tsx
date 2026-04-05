@@ -6,6 +6,7 @@ import type {
   ResearchBrief,
   ResearchCollection,
   ResearchCollectionSummary,
+  ResearchEvaluationDashboard,
   ResearchReviewChecklist,
   ResearchThreadTimelineDetail,
   ResearchThesisDelta,
@@ -29,6 +30,7 @@ type WorkspacePanelProps = {
   comparisonBusy: boolean
   integrityBusy: boolean
   reviewBusy: boolean
+  evaluationDashboardBusy: boolean
   searchValue: string
   includeArchived: boolean
   queryClassFilter: ResearchBrief['query_class'] | 'all'
@@ -36,6 +38,7 @@ type WorkspacePanelProps = {
   recaptureLineage: SessionRecaptureLineage | null
   integrityReport: SessionIntegrityReport | null
   reviewChecklist: ResearchReviewChecklist | null
+  evaluationDashboard: ResearchEvaluationDashboard | null
   integrityOverview: { count: number; issueCount: number } | null
   statusMessage: string | null
   collectionState: 'loading' | 'ready' | 'error'
@@ -78,6 +81,8 @@ type WorkspacePanelProps = {
   onCompare: (leftId: string, rightId: string) => void
   onVerifyIntegrity: (savedId: string) => void
   onVerifyWorkspaceIntegrity: () => void
+  onRunEvaluationDashboard: () => void
+  onExportEvaluationDashboard: () => void
 }
 
 function queryClassLabel(value: SavedResearchSessionSummary['query_class']): string {
@@ -95,6 +100,20 @@ function savedAtLabel(value: string): string {
 function optionalTimestampLabel(value: string | null | undefined): string {
   if (!value) return 'n/a'
   return value.replace('T', ' ').replace('Z', ' UTC')
+}
+
+function percentageLabel(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '0.0%'
+  }
+  return `${(value * 100).toFixed(1)}%`
+}
+
+function templateUsageLabel(usage: Record<string, number>): string {
+  const entries = Object.entries(usage)
+    .sort((left, right) => left[0].localeCompare(right[0]))
+    .map(([key, count]) => `${key}:${count}`)
+  return entries.length > 0 ? entries.join(' | ') : 'none'
 }
 
 function compactText(value: string, limit = 140): string {
@@ -148,6 +167,7 @@ export default function WorkspacePanel({
   comparisonBusy,
   integrityBusy,
   reviewBusy,
+  evaluationDashboardBusy,
   searchValue,
   includeArchived,
   queryClassFilter,
@@ -155,6 +175,7 @@ export default function WorkspacePanel({
   recaptureLineage,
   integrityReport,
   reviewChecklist,
+  evaluationDashboard,
   integrityOverview,
   statusMessage,
   collectionState,
@@ -194,6 +215,8 @@ export default function WorkspacePanel({
   onCompare,
   onVerifyIntegrity,
   onVerifyWorkspaceIntegrity,
+  onRunEvaluationDashboard,
+  onExportEvaluationDashboard,
 }: WorkspacePanelProps) {
   const [compareLeftId, setCompareLeftId] = useState('')
   const [compareRightId, setCompareRightId] = useState('')
@@ -930,6 +953,87 @@ export default function WorkspacePanel({
         ) : (
           <p className="workspace-status" data-testid="workspace-review-empty">
             Run Review on any saved session to audit claim linkage, freshness, provenance, evaluation, template metadata, and snapshot completeness.
+          </p>
+        )}
+      </div>
+
+      <div className="workspace-integrity" data-testid="workspace-evaluation-dashboard-panel">
+        <div className="workspace-collections-header">
+          <span className="block-label">EVALUATION DASHBOARD</span>
+          <div className="workspace-actions">
+            <button
+              type="button"
+              data-testid="workspace-evaluation-dashboard-run"
+              onClick={onRunEvaluationDashboard}
+              disabled={evaluationDashboardBusy}
+            >
+              {evaluationDashboardBusy ? 'Evaluating...' : 'Run Dashboard'}
+            </button>
+            <button
+              type="button"
+              data-testid="workspace-evaluation-dashboard-export"
+              onClick={onExportEvaluationDashboard}
+              disabled={evaluationDashboardBusy || !evaluationDashboard?.ready_for_export}
+            >
+              Export JSON
+            </button>
+          </div>
+        </div>
+        {evaluationDashboard ? (
+          <div className="workspace-integrity-result" data-testid="workspace-evaluation-dashboard-result">
+            <p data-testid="workspace-evaluation-dashboard-summary">
+              Sessions {evaluationDashboard.session_count} | pass {evaluationDashboard.passed_count} | fail{' '}
+              {evaluationDashboard.failed_count}
+            </p>
+            <p data-testid="workspace-evaluation-dashboard-pass-rate">
+              Pass rate: {percentageLabel(evaluationDashboard.pass_rate)}
+            </p>
+            <p data-testid="workspace-evaluation-dashboard-provenance-gaps">
+              Provenance gaps sessions/total: {evaluationDashboard.provenance_gap_session_count}/
+              {evaluationDashboard.provenance_gap_total_count}
+            </p>
+            <p data-testid="workspace-evaluation-dashboard-stale-incidence">
+              Stale source incidence sessions/total: {evaluationDashboard.stale_source_session_count}/
+              {evaluationDashboard.stale_source_total_count}
+            </p>
+            <p data-testid="workspace-evaluation-dashboard-claim-gaps">
+              Claim-linking gaps sessions/total: {evaluationDashboard.claim_linking_gap_session_count}/
+              {evaluationDashboard.claim_linking_gap_total_count}
+            </p>
+            <p data-testid="workspace-evaluation-dashboard-template-usage">
+              Template usage: {templateUsageLabel(evaluationDashboard.template_usage)}
+            </p>
+            <p className="workspace-item-snapshot-signature" data-testid="workspace-evaluation-dashboard-signature">
+              Signature: {evaluationDashboard.deterministic_signature}
+            </p>
+            <p data-testid="workspace-evaluation-dashboard-export-ready">
+              Export ready: {evaluationDashboard.ready_for_export ? 'yes' : 'no'}
+            </p>
+            {evaluationDashboard.common_failure_types.length > 0 ? (
+              <ul className="workspace-compare-drift-list" data-testid="workspace-evaluation-dashboard-failures">
+                {evaluationDashboard.common_failure_types.slice(0, 5).map((item, idx) => (
+                  <li key={`${item.check_id}-${idx}`} data-testid={`workspace-evaluation-dashboard-failure-${idx}`}>
+                    {item.check_id}: {item.count}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p data-testid="workspace-evaluation-dashboard-failures-none">No recurring failed checks.</p>
+            )}
+            {evaluationDashboard.sessions.length > 0 ? (
+              <ul className="workspace-compare-drift-list" data-testid="workspace-evaluation-dashboard-sessions">
+                {evaluationDashboard.sessions.slice(0, 4).map((item, idx) => (
+                  <li key={`${item.id}-${idx}`} data-testid={`workspace-evaluation-dashboard-session-${idx}`}>
+                    {item.id}: {queryClassLabel(item.query_class)} | {item.evaluation_passed ? 'PASS' : 'FAIL'} | stale{' '}
+                    {item.stale_source_count} | claim gaps {item.claim_linking_gap_count}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : (
+          <p className="workspace-status" data-testid="workspace-evaluation-dashboard-empty">
+            Run Dashboard to summarize pass/fail rates, recurring failure types, provenance gaps, stale-source incidence, and claim-linking gaps across saved sessions.
           </p>
         )}
       </div>

@@ -127,6 +127,45 @@ class ResearchEvaluationReport(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
 
 
+class ResearchEvaluationDashboardFailureType(BaseModel):
+    check_id: str
+    count: int = Field(ge=0)
+
+
+class ResearchEvaluationDashboardSession(BaseModel):
+    id: str
+    saved_at: str
+    query_class: Literal["macro_outlook", "event_probability", "ticker_macro"] | None = None
+    template_id: ResearchTemplateId | None = None
+    template_title: str | None = None
+    evaluation_passed: bool
+    evaluation_signature: str | None = None
+    failed_checks: list[str] = Field(default_factory=list)
+    provenance_gap_count: int = Field(ge=0)
+    stale_source_count: int = Field(ge=0)
+    claim_linking_gap_count: int = Field(ge=0)
+
+
+class ResearchEvaluationDashboard(BaseModel):
+    generated_at: str
+    session_count: int = Field(ge=0)
+    passed_count: int = Field(ge=0)
+    failed_count: int = Field(ge=0)
+    pass_rate: float = Field(ge=0.0, le=1.0)
+    provenance_gap_session_count: int = Field(ge=0)
+    provenance_gap_total_count: int = Field(ge=0)
+    stale_source_session_count: int = Field(ge=0)
+    stale_source_total_count: int = Field(ge=0)
+    claim_linking_gap_session_count: int = Field(ge=0)
+    claim_linking_gap_total_count: int = Field(ge=0)
+    common_failure_types: list[ResearchEvaluationDashboardFailureType] = Field(default_factory=list)
+    template_usage: dict[str, int] = Field(default_factory=dict)
+    sessions: list[ResearchEvaluationDashboardSession] = Field(default_factory=list)
+    deterministic_signature: str
+    ready_for_export: bool = False
+    filters: dict[str, Any] = Field(default_factory=dict)
+
+
 class ResearchReviewChecklistItem(BaseModel):
     check_id: str
     title: str

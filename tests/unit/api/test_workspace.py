@@ -207,6 +207,90 @@ def test_workspace_saved_session_signature_is_deterministic_for_demo_runs() -> N
     assert recapture_one["lineage"]["after_snapshot_signature"] == recapture_two["lineage"]["after_snapshot_signature"]
 
 
+def test_workspace_evaluation_dashboard_summary_and_export_gate() -> None:
+    first_question = "Set a macro baseline for this workspace dashboard."
+    second_question = "How should I interpret event probability shifts for this same setup?"
+
+    first_events = _collect_events(question=first_question, session_id="wave18-dashboard-a")
+    second_events = _collect_events(question=second_question, session_id="wave18-dashboard-b")
+
+    first_saved = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=first_question,
+            session_id="wave18-dashboard-a",
+            events=first_events,
+            brief=first_events[-1]["brief"],
+        ),
+    )
+    second_saved = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(
+            question=second_question,
+            session_id="wave18-dashboard-b",
+            events=second_events,
+            brief=second_events[-1]["brief"],
+        ),
+    )
+    assert first_saved.status_code == 200
+    assert second_saved.status_code == 200
+
+    dashboard = client.get(
+        "/api/v1/research/sessions/evaluation/dashboard",
+        params={"include_archived": "true"},
+    )
+    assert dashboard.status_code == 200
+    dashboard_payload = dashboard.json()
+    assert dashboard_payload["session_count"] == 2
+    assert dashboard_payload["passed_count"] == 2
+    assert dashboard_payload["failed_count"] == 0
+    assert dashboard_payload["ready_for_export"] is True
+    assert dashboard_payload["deterministic_signature"]
+    assert dashboard_payload["common_failure_types"] == []
+    assert len(dashboard_payload["sessions"]) == 2
+    assert dashboard_payload["template_usage"]["event_probability_interpretation"] >= 1
+    assert dashboard_payload["template_usage"]["macro_outlook"] >= 1
+
+    export_clean = client.get(
+        "/api/v1/research/sessions/evaluation/dashboard/export",
+        params={"include_archived": "true"},
+    )
+    assert export_clean.status_code == 200
+    assert "application/json" in export_clean.headers["content-type"]
+    assert "workspace-evaluation-dashboard" in export_clean.headers["content-disposition"]
+
+    second_id = second_saved.json()["id"]
+    saved_path = Path(session_store_module.get_session_store().root_dir / f"{second_id}.json")
+    payload = json.loads(saved_path.read_text(encoding="utf-8"))
+    payload["evaluation"]["passed"] = False
+    payload["evaluation"]["checks"] = [
+        {
+            "check_id": "claim_source_coverage",
+            "passed": False,
+            "detail": "Claim/source coverage intentionally degraded for dashboard aggregation test.",
+            "value": "6/7",
+        }
+    ]
+    saved_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    dashboard_with_failure = client.get(
+        "/api/v1/research/sessions/evaluation/dashboard",
+        params={"include_archived": "true"},
+    )
+    assert dashboard_with_failure.status_code == 200
+    failed_payload = dashboard_with_failure.json()
+    assert failed_payload["failed_count"] == 1
+    assert failed_payload["ready_for_export"] is False
+    assert failed_payload["common_failure_types"][0]["check_id"] == "claim_source_coverage"
+    assert failed_payload["common_failure_types"][0]["count"] == 1
+
+    export_blocked = client.get(
+        "/api/v1/research/sessions/evaluation/dashboard/export",
+        params={"include_archived": "true"},
+    )
+    assert export_blocked.status_code == 409
+
+
 def test_workspace_continue_from_saved_restores_followup_context() -> None:
     initial_question = "Give me a macro outlook for the next two quarters."
     follow_up = "How should I interpret the event probability if inflation re-accelerates?"

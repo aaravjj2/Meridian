@@ -97,6 +97,13 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await page.getByTestId('workspace-integrity-run-all').click()
   await expect(page.getByTestId('workspace-integrity-overview')).toBeVisible({ timeout: 10000 })
 
+  await page.getByTestId('workspace-evaluation-dashboard-run').click()
+  await expect(page.getByTestId('workspace-evaluation-dashboard-result')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByTestId('workspace-evaluation-dashboard-summary')).toBeVisible()
+  await expect(page.getByTestId('workspace-evaluation-dashboard-pass-rate')).toBeVisible()
+  await expect(page.getByTestId('workspace-evaluation-dashboard-signature')).toBeVisible()
+  await expect(page.getByTestId('workspace-evaluation-dashboard-export-ready')).toBeVisible()
+
   await page.getByTestId('workspace-review-0').click()
   await expect(page.getByTestId('workspace-review-result')).toBeVisible({ timeout: 10000 })
   await expect(page.getByTestId('workspace-review-status')).toContainText('PASS')
