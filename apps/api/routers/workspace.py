@@ -263,6 +263,25 @@ async def review_saved_session(saved_id: str) -> dict[str, object]:
     return checklist.model_dump()
 
 
+@router.get("/research/sessions/{saved_id}/ranking")
+async def get_evidence_ranking(
+    saved_id: str,
+    max_sources: int = Query(default=10, ge=1, le=50),
+    max_conflicts: int = Query(default=10, ge=1, le=50),
+    max_stale: int = Query(default=10, ge=1, le=50),
+) -> dict[str, object]:
+    store = get_session_store()
+    ranking = store.rank_evidence(
+        saved_id=saved_id,
+        max_sources=max_sources,
+        max_conflicts=max_conflicts,
+        max_stale=max_stale,
+    )
+    if ranking is None:
+        raise HTTPException(status_code=404, detail=f"Saved session not found: {saved_id}")
+    return ranking.model_dump()
+
+
 @router.get("/research/sessions/{saved_id}/export")
 async def export_saved_session(
     saved_id: str,

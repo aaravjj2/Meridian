@@ -650,3 +650,102 @@ def test_workspace_review_checklist_endpoint_is_deterministic_and_complete() -> 
         "snapshot_completeness",
     }.issubset(set(checks))
     assert checks["template_metadata"]["passed"] is True
+
+
+def test_evidence_ranking_deterministic():
+    question = "What is the current US GDP growth trend?"
+    session_id = "wave20-ranking-deterministic"
+
+    events = _collect_events(question=question, session_id=session_id)
+    complete = [e for e in events if e.get("type") == "complete"][0]
+
+    saved_response = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(question=question, session_id=session_id, events=events, brief=complete["brief"]),
+    )
+    assert saved_response.status_code == 200
+    saved_id = saved_response.json()["id"]
+
+    ranking_first = client.get(f"/api/v1/research/sessions/{saved_id}/ranking")
+    ranking_second = client.get(f"/api/v1/research/sessions/{saved_id}/ranking")
+
+    assert ranking_first.status_code == 200
+    assert ranking_second.status_code == 200
+
+    payload = ranking_first.json()
+    assert payload["version"] == "wave20-v1"
+    assert payload["generated_at"]
+    assert payload["total_source_count"] >= 0
+    assert payload["ranked_source_count"] >= 0
+    assert payload["total_conflict_count"] >= 0
+    assert payload["ranked_conflict_count"] >= 0
+    assert payload["total_stale_source_count"] >= 0
+    assert payload["ranked_stale_source_count"] >= 0
+
+    assert "top_sources_by_importance" in payload
+    assert "top_conflicts_by_severity" in payload
+    assert "stale_sources_by_sensitivity" in payload
+    assert "deterministic_signature" in payload
+
+    assert payload["deterministic_signature"] == ranking_second.json()["deterministic_signature"]
+
+    if payload["ranked_source_count"] > 0:
+        source = payload["top_sources_by_importance"][0]
+        assert "source_ref" in source
+        assert "source_type" in source
+        assert "support_importance_score" in source
+        assert 0.0 <= source["support_importance_score"] <= 1.0
+        assert "claim_count_supported" in source
+        assert "freshness" in source
+        assert "state_label" in source
+        assert "ranking_reason" in source
+        assert "deterministic_rank" in source
+
+    if payload["ranked_conflict_count"] > 0:
+        conflict = payload["top_conflicts_by_severity"][0]
+        assert "conflict_id" in conflict
+        assert "severity" in conflict
+        assert "severity_rank" in conflict
+        assert conflict["severity_rank"] in {1, 2, 3, 4}
+        assert "title" in conflict
+        assert "ranking_reason" in conflict
+
+
+def test_evidence_ranking_not_found():
+    response = client.get("/api/v1/research/sessions/nonexistent-id/ranking")
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+
+
+def test_evidence_ranking_limits():
+    question = "What are the key risks for Bitcoin in 2025?"
+    session_id = "wave20-ranking-limits"
+
+    events = _collect_events(question=question, session_id=session_id)
+    complete = [e for e in events if e.get("type") == "complete"][0]
+
+    saved_response = client.post(
+        "/api/v1/research/sessions",
+        json=_save_payload(question=question, session_id=session_id, events=events, brief=complete["brief"]),
+    )
+    assert saved_response.status_code == 200
+    saved_id = saved_response.json()["id"]
+
+    ranking_default = client.get(f"/api/v1/research/sessions/{saved_id}/ranking")
+    assert ranking_default.status_code == 200
+    payload_default = ranking_default.json()
+
+    ranking_limited = client.get(f"/api/v1/research/sessions/{saved_id}/ranking?max_sources=3&max_conflicts=2&max_stale=1")
+    assert ranking_limited.status_code == 200
+    payload_limited = ranking_limited.json()
+
+    assert len(payload_limited["top_sources_by_importance"]) <= 3
+    assert len(payload_limited["top_conflicts_by_severity"]) <= 2
+    assert len(payload_limited["stale_sources_by_sensitivity"]) <= 1
+
+    if payload_default["ranked_source_count"] > 3:
+        assert len(payload_limited["top_sources_by_importance"]) == 3
+    if payload_default["ranked_conflict_count"] > 2:
+        assert len(payload_limited["top_conflicts_by_severity"]) == 2
+    if payload_default["total_stale_source_count"] > 1:
+        assert len(payload_limited["stale_sources_by_sensitivity"]) == 1

@@ -15,6 +15,10 @@ from meridian.agent.react import ResearchAgent
 from meridian.agent.templates import resolve_research_template
 from meridian.normalisation.schemas import (
     CreateRegressionPackRequest,
+    EvidenceConflictRank,
+    EvidenceRankingSummary,
+    EvidenceSourceRank,
+    EvidenceStaleSourceRank,
     ResearchBrief,
     ResearchCollectionTimelineEntry,
     ResearchEvaluationDashboard,
@@ -3079,6 +3083,380 @@ class ResearchSessionStore:
             }
         )
         return bundle.model_dump(exclude_none=True, by_alias=True)
+
+    def rank_evidence(
+        self,
+        saved_id: str,
+        max_sources: int = 10,
+        max_conflicts: int = 10,
+        max_stale: int = 10,
+    ) -> EvidenceRankingSummary | None:
+        record = self.get(saved_id)
+        if record is None:
+            return None
+
+        timestamp = _iso_now()
+
+        source_ranks: list[EvidenceSourceRank] = []
+        for source in record.brief.sources:
+            source_ref = f"{source.type}:{source.id}"
+            claim_refs = source.claim_refs or []
+            claim_count = len(claim_refs)
+
+            provenance = source.provenance
+            if not provenance:
+                continue
+
+            freshness = provenance.freshness
+            state_label = provenance.state_label
+            freshness_hours = provenance.freshness_hours
+            deterministic_rank = state_label == "fixture"
+
+            support_importance_score = self._compute_source_importance_score(
+                claim_count=claim_count,
+                freshness=freshness,
+                state_label=state_label,
+                source_type=source.type,
+                claim_refs=claim_refs,
+                brief=record.brief,
+            )
+
+            ranking_reason = self._explain_source_importance(
+                claim_count=claim_count,
+                freshness=freshness,
+                state_label=state_label,
+                source_type=source.type,
+                support_importance_score=support_importance_score,
+            )
+
+            source_rank = EvidenceSourceRank(
+                source_ref=source_ref,
+                source_type=source.type,
+                support_importance_score=round(support_importance_score, 3),
+                claim_count_supported=claim_count,
+                claim_refs_supported=claim_refs,
+                freshness=freshness,
+                freshness_hours=freshness_hours,
+                state_label=state_label,
+                ranking_reason=ranking_reason,
+                deterministic_rank=deterministic_rank,
+            )
+            source_ranks.append(source_rank)
+
+        top_sources_by_importance = sorted(source_ranks, key=lambda r: r.support_importance_score, reverse=True)[:max_sources]
+
+        conflict_ranks: list[EvidenceConflictRank] = []
+        for conflict in record.brief.signal_conflicts:
+            severity = conflict.severity
+            severity_rank = self._severity_rank_value(severity)
+            claim_refs = conflict.claim_refs or []
+            source_refs = conflict.source_refs or []
+            affected_claim_count = len(claim_refs)
+
+            ranking_reason = self._explain_conflict_severity(
+                severity=severity,
+                affected_claim_count=affected_claim_count,
+                source_count=len(source_refs),
+            )
+
+            conflict_rank = EvidenceConflictRank(
+                conflict_id=conflict.conflict_id,
+                severity=severity,
+                severity_rank=severity_rank,
+                title=conflict.title,
+                claim_refs=claim_refs,
+                source_refs=source_refs,
+                affected_claim_count=affected_claim_count,
+                ranking_reason=ranking_reason,
+            )
+            conflict_ranks.append(conflict_rank)
+
+        top_conflicts_by_severity = sorted(conflict_ranks, key=lambda c: c.severity_rank, reverse=True)[:max_conflicts]
+
+        stale_ranks: list[EvidenceStaleSourceRank] = []
+        for source in record.brief.sources:
+            provenance = source.provenance
+            if not provenance:
+                continue
+
+            freshness = provenance.freshness
+            if freshness not in {"aging", "stale"}:
+                continue
+
+            source_ref = f"{source.type}:{source.id}"
+            claim_refs = source.claim_refs or []
+            claim_count = len(claim_refs)
+            freshness_hours = provenance.freshness_hours
+
+            thesis_sensitivity_score = self._compute_thesis_sensitivity(
+                source_type=source.type,
+                claim_count=claim_count,
+                freshness_hours=freshness_hours,
+                freshness=freshness,
+            )
+
+            ranking_reason = self._explain_stale_source_importance(
+                source_type=source.type,
+                freshness=freshness,
+                freshness_hours=freshness_hours,
+                claim_count=claim_count,
+                thesis_sensitivity_score=thesis_sensitivity_score,
+            )
+
+            recommended_action = self._recommend_stale_source_action(
+                freshness=freshness,
+                thesis_sensitivity_score=thesis_sensitivity_score,
+            )
+
+            stale_rank = EvidenceStaleSourceRank(
+                source_ref=source_ref,
+                source_type=source.type,
+                freshness=freshness,
+                freshness_hours=freshness_hours,
+                thesis_sensitivity_score=round(thesis_sensitivity_score, 3),
+                claim_count_affected=claim_count,
+                claim_refs_affected=claim_refs,
+                ranking_reason=ranking_reason,
+                recommended_action=recommended_action,
+            )
+            stale_ranks.append(stale_rank)
+
+        stale_sources_by_sensitivity = sorted(stale_ranks, key=lambda s: s.thesis_sensitivity_score, reverse=True)[:max_stale]
+
+        ranking_signature_payload = {
+            "saved_id": saved_id,
+            "max_sources": max_sources,
+            "max_conflicts": max_conflicts,
+            "max_stale": max_stale,
+            "sources": [rank.model_dump(exclude_none=True, exclude={"ranking_reason"}) for rank in top_sources_by_importance],
+            "conflicts": [rank.model_dump(exclude_none=True, exclude={"ranking_reason"}) for rank in top_conflicts_by_severity],
+            "stale": [rank.model_dump(exclude_none=True, exclude={"ranking_reason"}) for rank in stale_sources_by_sensitivity],
+        }
+        deterministic_signature = self._hash_value_payload(ranking_signature_payload)
+
+        return EvidenceRankingSummary(
+            version="wave20-v1",
+            generated_at=timestamp,
+            total_source_count=len(record.brief.sources),
+            ranked_source_count=len(source_ranks),
+            total_conflict_count=len(record.brief.signal_conflicts),
+            ranked_conflict_count=len(conflict_ranks),
+            total_stale_source_count=len(stale_ranks),
+            ranked_stale_source_count=len(stale_ranks),
+            top_sources_by_importance=top_sources_by_importance,
+            top_conflicts_by_severity=top_conflicts_by_severity,
+            stale_sources_by_sensitivity=stale_sources_by_sensitivity,
+            deterministic_signature=deterministic_signature,
+        )
+
+    def _compute_source_importance_score(
+        self,
+        claim_count: int,
+        freshness: str,
+        state_label: str,
+        source_type: str,
+        claim_refs: list[str],
+        brief: ResearchBrief,
+    ) -> float:
+        score = 0.5
+
+        claim_weight = min(claim_count / 5.0, 1.0)
+        score += claim_weight * 0.3
+
+        if freshness == "fresh":
+            score += 0.1
+        elif freshness == "aging":
+            score += 0.05
+        elif freshness == "stale":
+            score -= 0.1
+
+        if state_label == "fixture":
+            score += 0.05
+        elif state_label == "live":
+            score += 0.1
+
+        type_weights = {
+            "edgar": 0.15,
+            "fred": 0.12,
+            "market": 0.1,
+            "news": 0.08,
+        }
+        score += type_weights.get(source_type, 0.05)
+
+        critical_claim_keywords = ["critical", "key", "primary", "essential", "fundamental"]
+        for claim_ref in claim_refs:
+            for item in [*brief.bull_case, *brief.bear_case, *brief.key_risks]:
+                if item.claim_id == claim_ref:
+                    text = (item.point if hasattr(item, "point") else item.risk).lower()
+                    if any(keyword in text for keyword in critical_claim_keywords):
+                        score += 0.15
+                        break
+
+        return round(min(max(score, 0.0), 1.0), 3)
+
+    def _explain_source_importance(
+        self,
+        claim_count: int,
+        freshness: str,
+        state_label: str,
+        source_type: str,
+        support_importance_score: float,
+    ) -> str:
+        reasons = []
+
+        if claim_count >= 3:
+            reasons.append(f"supports {claim_count} claims (high coverage)")
+        elif claim_count >= 1:
+            reasons.append(f"supports {claim_count} claim(s)")
+
+        if freshness == "fresh":
+            reasons.append("fresh data source")
+        elif freshness == "stale":
+            reasons.append("stale data source (reduces importance)")
+
+        if state_label == "live":
+            reasons.append("live-captured source")
+        elif state_label == "fixture":
+            reasons.append("deterministic fixture source")
+
+        type_labels = {
+            "edgar": "regulatory filing",
+            "fred": "economic data",
+            "market": "prediction market",
+            "news": "news source",
+        }
+        if source_type in type_labels:
+            reasons.append(type_labels[source_type])
+
+        if support_importance_score >= 0.8:
+            reasons.append("high overall importance")
+        elif support_importance_score >= 0.6:
+            reasons.append("moderate importance")
+        else:
+            reasons.append("lower priority")
+
+        return "; ".join(reasons) if reasons else "minimal evidence support"
+
+    def _severity_rank_value(self, severity: str) -> int:
+        severity_ranks = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+        return severity_ranks.get(severity, 1)
+
+    def _explain_conflict_severity(
+        self,
+        severity: str,
+        affected_claim_count: int,
+        source_count: int,
+    ) -> str:
+        reasons = []
+
+        if severity == "critical":
+            reasons.append("critical severity: fundamentally contradictory signals")
+        elif severity == "high":
+            reasons.append("high severity: major inconsistencies in evidence")
+        elif severity == "medium":
+            reasons.append("medium severity: conflicting perspectives detected")
+        else:
+            reasons.append("low severity: minor tensions in signals")
+
+        if affected_claim_count >= 3:
+            reasons.append(f"affects {affected_claim_count} claims (broad impact)")
+        elif affected_claim_count >= 1:
+            reasons.append(f"affects {affected_claim_count} claim(s)")
+
+        if source_count >= 3:
+            reasons.append(f"involves {source_count} sources (complex conflict)")
+        elif source_count >= 2:
+            reasons.append(f"involves {source_count} sources")
+
+        return "; ".join(reasons) if reasons else f"{severity} severity conflict"
+
+    def _compute_thesis_sensitivity(
+        self,
+        source_type: str,
+        claim_count: int,
+        freshness_hours: float | None,
+        freshness: str,
+    ) -> float:
+        score = 0.5
+
+        type_sensitivity = {
+            "edgar": 0.25,
+            "fred": 0.2,
+            "market": 0.15,
+            "news": 0.1,
+        }
+        score += type_sensitivity.get(source_type, 0.05)
+
+        if claim_count >= 3:
+            score += 0.2
+        elif claim_count >= 1:
+            score += 0.1
+
+        if freshness_hours is not None:
+            if freshness_hours > 24 * 180:
+                score += 0.15
+            elif freshness_hours > 24 * 30:
+                score += 0.1
+            elif freshness_hours > 24 * 7:
+                score += 0.05
+
+        if freshness == "stale":
+            score += 0.1
+
+        return round(min(max(score, 0.0), 1.0), 3)
+
+    def _explain_stale_source_importance(
+        self,
+        source_type: str,
+        freshness: str,
+        freshness_hours: float | None,
+        claim_count: int,
+        thesis_sensitivity_score: float,
+    ) -> str:
+        reasons = []
+
+        type_labels = {
+            "edgar": "regulatory filing",
+            "fred": "economic data",
+            "market": "prediction market",
+            "news": "news source",
+        }
+        if source_type in type_labels:
+            reasons.append(type_labels[source_type])
+
+        if freshness == "stale":
+            reasons.append("stale data")
+        elif freshness == "aging":
+            reasons.append("aging data")
+
+        if freshness_hours is not None:
+            if freshness_hours > 24 * 180:
+                reasons.append(f"over {int(freshness_hours / (24 * 30))} months old")
+            elif freshness_hours > 24 * 30:
+                reasons.append(f"over {int(freshness_hours / 24)} days old")
+            elif freshness_hours > 24 * 7:
+                reasons.append(f"over {int(freshness_hours / 24)} days old")
+
+        if claim_count >= 2:
+            reasons.append(f"supports {claim_count} claims")
+
+        if thesis_sensitivity_score >= 0.7:
+            reasons.append("high thesis sensitivity")
+        elif thesis_sensitivity_score >= 0.5:
+            reasons.append("moderate thesis sensitivity")
+
+        return "; ".join(reasons) if reasons else "stale source detected"
+
+    def _recommend_stale_source_action(
+        self,
+        freshness: str,
+        thesis_sensitivity_score: float,
+    ) -> Literal["refresh", "monitor", "ignore"]:
+        if freshness == "stale" and thesis_sensitivity_score >= 0.7:
+            return "refresh"
+        if freshness == "stale" or thesis_sensitivity_score >= 0.6:
+            return "monitor"
+        return "ignore"
 
     def export_markdown(self, record: SavedResearchSession) -> str:
         trace_summary = {

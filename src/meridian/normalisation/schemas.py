@@ -695,3 +695,54 @@ class CollectionBundleExportV2(BaseModel):
     bundle_kind: Literal["collection"]
     manifest: CollectionBundleManifest
     files: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvidenceSourceRank(BaseModel):
+    source_ref: str
+    source_type: Literal["fred", "edgar", "news", "market"]
+    support_importance_score: float = Field(ge=0.0, le=1.0)
+    claim_count_supported: int = Field(ge=0)
+    claim_refs_supported: list[str] = Field(default_factory=list)
+    freshness: Literal["fresh", "aging", "stale", "unknown"]
+    freshness_hours: float | None = Field(default=None)
+    state_label: Literal["fixture", "cached", "live", "derived", "unknown"]
+    ranking_reason: str
+    deterministic_rank: bool = False
+
+
+class EvidenceConflictRank(BaseModel):
+    conflict_id: str
+    severity: Literal["low", "medium", "high", "critical"]
+    severity_rank: int = Field(ge=1, le=4)
+    title: str
+    claim_refs: list[str] = Field(default_factory=list)
+    source_refs: list[str] = Field(default_factory=list)
+    affected_claim_count: int = Field(ge=0)
+    ranking_reason: str
+
+
+class EvidenceStaleSourceRank(BaseModel):
+    source_ref: str
+    source_type: Literal["fred", "edgar", "news", "market"]
+    freshness: Literal["aging", "stale"]
+    freshness_hours: float | None = Field(default=None)
+    thesis_sensitivity_score: float = Field(ge=0.0, le=1.0)
+    claim_count_affected: int = Field(ge=0)
+    claim_refs_affected: list[str] = Field(default_factory=list)
+    ranking_reason: str
+    recommended_action: Literal["refresh", "monitor", "ignore"]
+
+
+class EvidenceRankingSummary(BaseModel):
+    version: Literal["wave20-v1"] = "wave20-v1"
+    generated_at: str
+    total_source_count: int = Field(ge=0)
+    ranked_source_count: int = Field(ge=0)
+    total_conflict_count: int = Field(ge=0)
+    ranked_conflict_count: int = Field(ge=0)
+    total_stale_source_count: int = Field(ge=0)
+    ranked_stale_source_count: int = Field(ge=0)
+    top_sources_by_importance: list[EvidenceSourceRank] = Field(default_factory=list)
+    top_conflicts_by_severity: list[EvidenceConflictRank] = Field(default_factory=list)
+    stale_sources_by_sensitivity: list[EvidenceStaleSourceRank] = Field(default_factory=list)
+    deterministic_signature: str
