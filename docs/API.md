@@ -133,9 +133,9 @@ Brief payload additions in complete events:
 - bull_case[].claim_id, bear_case[].claim_id, key_risks[].claim_id: stable claim identifiers
 - sources[].claim_refs: array of claim_id links for claim-to-source navigation
 - sources[].preview: structured preview metadata keyed by source type
-- sources[].provenance: source-level provenance metadata including freshness, cache_lineage, and snapshot metadata
-- provenance_summary: aggregate freshness/source-count metadata
-- snapshot_summary: snapshot-level provenance rollup (snapshot kinds, cache lineage, checksum coverage)
+- sources[].provenance: source-level provenance metadata including `state_label`, freshness, cache_lineage, and snapshot metadata
+- provenance_summary: aggregate freshness/source-count metadata (includes `state_label_counts`)
+- snapshot_summary: snapshot-level provenance rollup (state labels, snapshot kinds, cache lineage, timing summary, checksum coverage)
 - signal_conflicts[]: contradiction metadata with conflict_id, title, summary, severity, claim_refs, source_refs
 - evaluation: deterministic quality checks with stable signature and metrics
 
@@ -145,6 +145,7 @@ Snapshot and cache-lineage semantics:
 - `snapshot.snapshot_kind=cache`: replay from cached snapshot state
 - `snapshot.snapshot_kind=live_capture`: fresher fetch path capture
 - `snapshot.snapshot_kind=derived`: computed/derived snapshot
+- `provenance.state_label`: normalized user-facing state (`fixture|cached|live|derived|unknown`)
 - `cache_lineage`: normalized lineage classification (`fixture|cache|fresh_pull|derived|unknown`)
 
 Semantics:
@@ -182,7 +183,13 @@ Response:
       "updated_at": "2026-04-03T23:59:59Z",
       "canonical_signature": "<sha256>",
       "evaluation_passed": true,
-      "evaluation_signature": "<sha256>"
+      "evaluation_signature": "<sha256>",
+      "snapshot_kind_counts": {"fixture": 3, "cache": 0, "live_capture": 0, "derived": 0, "unknown": 0},
+      "cache_lineage_counts": {"fixture": 3, "cache": 0, "fresh_pull": 0, "derived": 0, "unknown": 0},
+      "state_label_counts": {"fixture": 3, "cached": 0, "live": 0, "derived": 0, "unknown": 0},
+      "latest_fetched_at": null,
+      "latest_cached_at": null,
+      "latest_generated_at": "2026-04-03T23:59:59Z"
     }
   ],
   "count": 1
@@ -408,6 +415,12 @@ Top-level fields:
 - `report.md`
 - `timeline.json`
 - `compare.json`
+
+Wave 17 live/cached metadata in `files.provenance.json`:
+
+- `live_mode_metadata.state_label_counts`
+- `live_mode_metadata.cache_lineage_counts`
+- `live_mode_metadata.timing_summary` (`latest_fetched_at`, `latest_cached_at`, `latest_generated_at`)
 
 ### Research Collections (Wave 12)
 

@@ -123,6 +123,23 @@ const savedSummary = {
     derived: 0,
     unknown: 0,
   },
+  cache_lineage_counts: {
+    fixture: 3,
+    cache: 0,
+    fresh_pull: 0,
+    derived: 0,
+    unknown: 0,
+  },
+  state_label_counts: {
+    fixture: 3,
+    cached: 0,
+    live: 0,
+    derived: 0,
+    unknown: 0,
+  },
+  latest_fetched_at: null,
+  latest_cached_at: null,
+  latest_generated_at: '2026-04-03T10:00:00Z',
   snapshot_signature: 'snap-sig-abc123',
 } as const
 
@@ -148,6 +165,23 @@ const savedSummaryTwo = {
     derived: 0,
     unknown: 0,
   },
+  cache_lineage_counts: {
+    fixture: 3,
+    cache: 0,
+    fresh_pull: 0,
+    derived: 0,
+    unknown: 0,
+  },
+  state_label_counts: {
+    fixture: 3,
+    cached: 0,
+    live: 0,
+    derived: 0,
+    unknown: 0,
+  },
+  latest_fetched_at: null,
+  latest_cached_at: null,
+  latest_generated_at: '2026-04-03T10:06:00Z',
   snapshot_signature: 'snap-sig-def456',
 } as const
 
@@ -431,6 +465,8 @@ describe('HomePage workspace persistence', () => {
 
     expect(await screen.findByTestId('workspace-item-0')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-evaluation-0')).toHaveTextContent('Eval PASS')
+    expect(screen.getByTestId('workspace-state-labels-0')).toHaveTextContent('3/0/0/0/0')
+    expect(screen.getByTestId('workspace-live-metadata-0')).toHaveTextContent('generated 2026-04-03 10:00:00 UTC')
     expect(screen.getByTestId('workspace-export-current-json')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-export-current-markdown')).toBeInTheDocument()
 
@@ -762,6 +798,7 @@ describe('HomePage workspace persistence', () => {
 
     expect(await screen.findByTestId('workspace-item-0')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-snapshot-0')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-state-labels-0')).toBeInTheDocument()
 
     fireEvent.change(screen.getByTestId('workspace-compare-left'), {
       target: { value: savedSummary.id },

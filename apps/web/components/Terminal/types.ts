@@ -64,6 +64,7 @@ export type SourceProvenance = {
   source_ref: string
   tool_name: string
   mode: 'demo' | 'live'
+  state_label: 'fixture' | 'cached' | 'live' | 'derived' | 'unknown'
   cache_lineage: 'fixture' | 'cache' | 'fresh_pull' | 'derived' | 'unknown'
   observed_at?: string | null
   captured_at: string
@@ -162,6 +163,11 @@ export type SavedResearchSessionSummary = {
   evaluation_passed?: boolean | null
   evaluation_signature?: string | null
   snapshot_kind_counts?: Record<string, number> | null
+  cache_lineage_counts?: Record<string, number> | null
+  state_label_counts?: Record<string, number> | null
+  latest_fetched_at?: string | null
+  latest_cached_at?: string | null
+  latest_generated_at?: string | null
   snapshot_signature?: string | null
 }
 

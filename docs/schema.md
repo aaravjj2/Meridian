@@ -36,8 +36,8 @@
 - `confidence_rationale: str`
 - `sources: list[{ type, id, excerpt, claim_refs?, preview?, provenance? }]`
 - `signal_conflicts: list[{ conflict_id, title, summary, severity, claim_refs, source_refs }]`
-- `provenance_summary: dict | null` (captured_at, mode, source_count, freshness_counts)
-- `snapshot_summary: dict | null` (snapshot_count, snapshot_kind_counts, cache_lineage_counts, freshness_by_snapshot_kind, snapshot_checksum_coverage)
+- `provenance_summary: dict | null` (captured_at, mode, source_count, state_label_counts, freshness_counts)
+- `snapshot_summary: dict | null` (snapshot_count, state_label_counts, snapshot_kind_counts, cache_lineage_counts, freshness_by_snapshot_kind, timing_summary, snapshot_checksum_coverage)
 - `created_at: str (ISO)`
 - `trace_steps: list[int]`
 
@@ -73,6 +73,7 @@ Snapshot meaning guidance:
 - `source_ref: str` (`type:id`)
 - `tool_name: str`
 - `mode: "demo" | "live"`
+- `state_label: "fixture" | "cached" | "live" | "derived" | "unknown"`
 - `cache_lineage: "fixture" | "cache" | "fresh_pull" | "derived" | "unknown"`
 - `observed_at: str | null`
 - `captured_at: str`
@@ -285,6 +286,15 @@ Canonical signature notes:
 - `issues: list[str]`
 - `checked_at: str (ISO)`
 - `provenance: dict[str, Any]`
+
+## SavedResearchSessionSummary (API listing)
+
+- `snapshot_kind_counts: dict[str, int] | null`
+- `cache_lineage_counts: dict[str, int] | null`
+- `state_label_counts: dict[str, int] | null`
+- `latest_fetched_at: str | null`
+- `latest_cached_at: str | null`
+- `latest_generated_at: str | null`
 
 ## SessionBundleExportV2
 

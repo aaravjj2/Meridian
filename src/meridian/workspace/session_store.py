@@ -86,6 +86,30 @@ def _cache_lineage_from_snapshot_kind(
     return "unknown"
 
 
+def _state_label_from_provenance(
+    *,
+    snapshot_kind: str,
+    cache_lineage: str,
+) -> Literal["fixture", "cached", "live", "derived", "unknown"]:
+    if snapshot_kind == "fixture" or cache_lineage == "fixture":
+        return "fixture"
+    if snapshot_kind == "cache" or cache_lineage == "cache":
+        return "cached"
+    if snapshot_kind == "live_capture" or cache_lineage == "fresh_pull":
+        return "live"
+    if snapshot_kind == "derived" or cache_lineage == "derived":
+        return "derived"
+    return "unknown"
+
+
+def _latest_iso_timestamp(values: list[str]) -> str | None:
+    parsed = [_parse_iso(value) for value in values if value]
+    parsed = [item for item in parsed if item is not None]
+    if not parsed:
+        return None
+    return max(parsed).isoformat().replace("+00:00", "Z")
+
+
 def _conflict_severity_rank(severity: Any) -> int:
     value = str(severity or "").strip().lower()
     if value == "high":
@@ -209,6 +233,11 @@ class SavedResearchSessionSummary(BaseModel):
     evaluation_passed: bool | None = None
     evaluation_signature: str | None = None
     snapshot_kind_counts: dict[str, int] | None = None
+    cache_lineage_counts: dict[str, int] | None = None
+    state_label_counts: dict[str, int] | None = None
+    latest_fetched_at: str | None = None
+    latest_cached_at: str | None = None
+    latest_generated_at: str | None = None
     snapshot_signature: str | None = None
 
 
@@ -583,6 +612,7 @@ class ResearchSessionStore:
         freshness_counts: Counter[str] = Counter()
         snapshot_kind_counts: Counter[str] = Counter()
         cache_lineage_counts: Counter[str] = Counter()
+        state_label_counts: Counter[str] = Counter()
         freshness_by_snapshot_kind: dict[str, Counter[str]] = {
             "fixture": Counter(),
             "cache": Counter(),
@@ -590,6 +620,9 @@ class ResearchSessionStore:
             "derived": Counter(),
             "unknown": Counter(),
         }
+        fetched_at_values: list[str] = []
+        cached_at_values: list[str] = []
+        generated_at_values: list[str] = []
         observed_candidates: list[datetime] = []
         snapshot_checksum_coverage = 0
 
@@ -614,6 +647,10 @@ class ResearchSessionStore:
             cache_lineage = str(existing.get("cache_lineage") or _cache_lineage_from_snapshot_kind(snapshot_kind))
             if cache_lineage not in {"fixture", "cache", "fresh_pull", "derived", "unknown"}:
                 cache_lineage = _cache_lineage_from_snapshot_kind(snapshot_kind)
+            state_label = _state_label_from_provenance(
+                snapshot_kind=snapshot_kind,
+                cache_lineage=cache_lineage,
+            )
 
             dataset = str(existing_snapshot.get("dataset") or self._snapshot_dataset_label(source))
             dataset_version = existing_snapshot.get("dataset_version") or preview.get("dataset_version")
@@ -642,6 +679,13 @@ class ResearchSessionStore:
             elif snapshot_kind == "derived":
                 generated_at = generated_at or captured_at
 
+            if isinstance(fetched_at, str) and fetched_at.strip():
+                fetched_at_values.append(fetched_at)
+            if isinstance(cached_at, str) and cached_at.strip():
+                cached_at_values.append(cached_at)
+            if isinstance(generated_at, str) and generated_at.strip():
+                generated_at_values.append(generated_at)
+
             snapshot_signature_payload = {
                 "source_ref": source_ref,
                 "snapshot_kind": snapshot_kind,
@@ -668,6 +712,7 @@ class ResearchSessionStore:
                 source_ref=source_ref,
                 tool_name=str(existing.get("tool_name") or self._source_tool_name(source.type)),
                 mode=mode_value,
+                state_label=state_label,
                 cache_lineage=cache_lineage,
                 observed_at=observed_at,
                 captured_at=str(existing.get("captured_at") or captured_at),
@@ -689,6 +734,7 @@ class ResearchSessionStore:
             freshness_counts[source.provenance.freshness] += 1
             snapshot_kind_counts[snapshot_kind] += 1
             cache_lineage_counts[cache_lineage] += 1
+            state_label_counts[state_label] += 1
             freshness_by_snapshot_kind[snapshot_kind][source.provenance.freshness] += 1
             if checksum_sha256:
                 snapshot_checksum_coverage += 1
@@ -701,6 +747,13 @@ class ResearchSessionStore:
             "mode": mode,
             "deterministic": mode == "demo",
             "source_count": len(enriched.sources),
+            "state_label_counts": {
+                "fixture": state_label_counts.get("fixture", 0),
+                "cached": state_label_counts.get("cached", 0),
+                "live": state_label_counts.get("live", 0),
+                "derived": state_label_counts.get("derived", 0),
+                "unknown": state_label_counts.get("unknown", 0),
+            },
             "freshness_counts": {
                 "fresh": freshness_counts.get("fresh", 0),
                 "aging": freshness_counts.get("aging", 0),
@@ -714,6 +767,13 @@ class ResearchSessionStore:
             "mode": mode,
             "deterministic": mode == "demo",
             "snapshot_count": len(enriched.sources),
+            "state_label_counts": {
+                "fixture": state_label_counts.get("fixture", 0),
+                "cached": state_label_counts.get("cached", 0),
+                "live": state_label_counts.get("live", 0),
+                "derived": state_label_counts.get("derived", 0),
+                "unknown": state_label_counts.get("unknown", 0),
+            },
             "snapshot_kind_counts": {
                 "fixture": snapshot_kind_counts.get("fixture", 0),
                 "cache": snapshot_kind_counts.get("cache", 0),
@@ -736,6 +796,11 @@ class ResearchSessionStore:
                     "unknown": counters.get("unknown", 0),
                 }
                 for kind, counters in freshness_by_snapshot_kind.items()
+            },
+            "timing_summary": {
+                "latest_fetched_at": _latest_iso_timestamp(fetched_at_values),
+                "latest_cached_at": _latest_iso_timestamp(cached_at_values),
+                "latest_generated_at": _latest_iso_timestamp(generated_at_values),
             },
             "snapshot_checksum_coverage": snapshot_checksum_coverage,
         }
@@ -795,6 +860,11 @@ class ResearchSessionStore:
             snapshot.snapshot_kind
             for snapshot in snapshot_records
             if snapshot is not None
+        )
+        state_label_counts: Counter[str] = Counter(
+            source.provenance.state_label
+            for source in brief.sources
+            if source.provenance is not None
         )
         snapshot_complete = all(
             snapshot is not None
@@ -938,6 +1008,12 @@ class ResearchSessionStore:
                 )
                 for source in brief.sources
             },
+            "source_state_label": {
+                f"{source.type}:{source.id}": (
+                    source.provenance.state_label if source.provenance else "unknown"
+                )
+                for source in brief.sources
+            },
             "freshness_policy": {
                 "version": freshness_policy["version"],
                 "violation_count": freshness_policy["violation_count"],
@@ -976,6 +1052,11 @@ class ResearchSessionStore:
             "live_capture_snapshot_count": snapshot_kind_counts.get("live_capture", 0),
             "derived_snapshot_count": snapshot_kind_counts.get("derived", 0),
             "unknown_snapshot_count": snapshot_kind_counts.get("unknown", 0),
+            "fixture_state_count": state_label_counts.get("fixture", 0),
+            "cached_state_count": state_label_counts.get("cached", 0),
+            "live_state_count": state_label_counts.get("live", 0),
+            "derived_state_count": state_label_counts.get("derived", 0),
+            "unknown_state_count": state_label_counts.get("unknown", 0),
             "snapshot_checksum_coverage": sum(
                 1
                 for snapshot in snapshot_records
@@ -1221,6 +1302,21 @@ class ResearchSessionStore:
             if isinstance(snapshot_summary.get("snapshot_kind_counts"), dict)
             else None
         )
+        cache_lineage_counts = (
+            snapshot_summary.get("cache_lineage_counts")
+            if isinstance(snapshot_summary.get("cache_lineage_counts"), dict)
+            else None
+        )
+        state_label_counts = (
+            snapshot_summary.get("state_label_counts")
+            if isinstance(snapshot_summary.get("state_label_counts"), dict)
+            else None
+        )
+        timing_summary = (
+            snapshot_summary.get("timing_summary")
+            if isinstance(snapshot_summary.get("timing_summary"), dict)
+            else {}
+        )
         return SavedResearchSessionSummary(
             id=record.id,
             question=record.question,
@@ -1239,6 +1335,23 @@ class ResearchSessionStore:
             evaluation_passed=record.evaluation.passed if record.evaluation else None,
             evaluation_signature=record.evaluation.deterministic_signature if record.evaluation else None,
             snapshot_kind_counts=snapshot_kind_counts,
+            cache_lineage_counts=cache_lineage_counts,
+            state_label_counts=state_label_counts,
+            latest_fetched_at=(
+                str(timing_summary.get("latest_fetched_at"))
+                if timing_summary.get("latest_fetched_at")
+                else None
+            ),
+            latest_cached_at=(
+                str(timing_summary.get("latest_cached_at"))
+                if timing_summary.get("latest_cached_at")
+                else None
+            ),
+            latest_generated_at=(
+                str(timing_summary.get("latest_generated_at"))
+                if timing_summary.get("latest_generated_at")
+                else None
+            ),
             snapshot_signature=self._snapshot_signature(record.brief),
         )
 
@@ -1595,6 +1708,7 @@ class ResearchSessionStore:
             if record.mode == "demo":
                 snapshot.snapshot_kind = "derived"
                 source.provenance.cache_lineage = "derived"
+                source.provenance.state_label = "derived"
                 base_dataset_version = str(snapshot.dataset_version or "demo-fixture-v1")
                 snapshot.dataset_version = (
                     base_dataset_version
@@ -2272,6 +2386,11 @@ class ResearchSessionStore:
             },
             "captured_at": provenance_summary.get("captured_at"),
             "freshness_counts": provenance_summary.get("freshness_counts"),
+            "live_mode_metadata": {
+                "state_label_counts": snapshot_summary.get("state_label_counts"),
+                "cache_lineage_counts": snapshot_summary.get("cache_lineage_counts"),
+                "timing_summary": snapshot_summary.get("timing_summary"),
+            },
             "snapshot_summary": snapshot_summary,
             "snapshot_sources": snapshot_projection,
             "snapshot_signature": snapshot_signature,
@@ -2428,6 +2547,7 @@ class ResearchSessionStore:
             claim_refs = ", ".join(source.claim_refs) if source.claim_refs else "none"
             freshness = source.provenance.freshness if source.provenance else "unknown"
             observed_at = source.provenance.observed_at if source.provenance else "n/a"
+            captured_at = source.provenance.captured_at if source.provenance else "n/a"
             snapshot_kind = (
                 source.provenance.snapshot.snapshot_kind
                 if source.provenance and source.provenance.snapshot
@@ -2439,8 +2559,27 @@ class ResearchSessionStore:
                 else "n/a"
             )
             cache_lineage = source.provenance.cache_lineage if source.provenance else "unknown"
+            state_label = source.provenance.state_label if source.provenance else "unknown"
+            fetched_at = (
+                source.provenance.snapshot.fetched_at
+                if source.provenance and source.provenance.snapshot
+                else "n/a"
+            )
+            cached_at = (
+                source.provenance.snapshot.cached_at
+                if source.provenance and source.provenance.snapshot
+                else "n/a"
+            )
+            generated_at = (
+                source.provenance.snapshot.generated_at
+                if source.provenance and source.provenance.snapshot
+                else "n/a"
+            )
+            fetched_at = fetched_at or "n/a"
+            cached_at = cached_at or "n/a"
+            generated_at = generated_at or "n/a"
             lines.append(
-                f"- {source.type}:{source.id} | claims: {claim_refs} | freshness: {freshness} | cache_lineage: {cache_lineage} | snapshot_kind: {snapshot_kind} | snapshot_id: {snapshot_id} | observed_at: {observed_at} | {source.excerpt}"
+                f"- {source.type}:{source.id} | claims: {claim_refs} | state: {state_label} | freshness: {freshness} | cache_lineage: {cache_lineage} | snapshot_kind: {snapshot_kind} | snapshot_id: {snapshot_id} | observed_at: {observed_at} | captured_at: {captured_at} | fetched_at: {fetched_at} | cached_at: {cached_at} | generated_at: {generated_at} | {source.excerpt}"
             )
 
         lines.extend(["", "## Signal Conflicts"])

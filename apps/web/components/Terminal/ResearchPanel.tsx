@@ -42,6 +42,14 @@ function snapshotKindBadgeClass(snapshotKind: string): string {
   return 'snapshot-badge snapshot-badge-unknown'
 }
 
+function stateLabelBadgeClass(stateLabel: string): string {
+  if (stateLabel === 'fixture') return 'snapshot-badge snapshot-badge-fixture'
+  if (stateLabel === 'cached') return 'snapshot-badge snapshot-badge-cache'
+  if (stateLabel === 'live') return 'snapshot-badge snapshot-badge-live'
+  if (stateLabel === 'derived') return 'snapshot-badge snapshot-badge-derived'
+  return 'snapshot-badge snapshot-badge-unknown'
+}
+
 const SAMPLE_SERIES = [
   { date: '2025-11-01', value: -0.38 },
   { date: '2025-12-01', value: -0.35 },
@@ -99,11 +107,19 @@ type ClaimRecord = {
 function SourcePreview({ source, idx }: { source: SourceItem; idx: number }) {
   const preview = source.preview ?? {}
   const entries = Object.entries(preview).filter(([key]) => key !== 'points')
+  const provenance = source.provenance ?? null
   const snapshot = source.provenance?.snapshot ?? null
   const cacheLineage = source.provenance?.cache_lineage ?? 'unknown'
+  const stateLabel = source.provenance?.state_label ?? 'unknown'
 
   const snapshotPanel = (
     <div className="source-snapshot" data-testid={`source-snapshot-${idx}`}>
+      <div className="source-snapshot-row">
+        <span className="source-preview-key">state label</span>
+        <span className="source-preview-value" data-testid={`source-state-label-detail-${idx}`}>
+          {stateLabel}
+        </span>
+      </div>
       <div className="source-snapshot-row">
         <span className="source-preview-key">snapshot kind</span>
         <span className="source-preview-value" data-testid={`source-snapshot-kind-${idx}`}>
@@ -132,6 +148,30 @@ function SourcePreview({ source, idx }: { source: SourceItem; idx: number }) {
         <span className="source-preview-key">checksum</span>
         <span className="source-preview-value" data-testid={`source-snapshot-checksum-${idx}`}>
           {snapshot?.checksum_sha256 ?? 'n/a'}
+        </span>
+      </div>
+      <div className="source-snapshot-row">
+        <span className="source-preview-key">generated at</span>
+        <span className="source-preview-value" data-testid={`source-snapshot-generated-at-${idx}`}>
+          {snapshot?.generated_at ?? 'n/a'}
+        </span>
+      </div>
+      <div className="source-snapshot-row">
+        <span className="source-preview-key">cached at</span>
+        <span className="source-preview-value" data-testid={`source-snapshot-cached-at-${idx}`}>
+          {snapshot?.cached_at ?? 'n/a'}
+        </span>
+      </div>
+      <div className="source-snapshot-row">
+        <span className="source-preview-key">fetched at</span>
+        <span className="source-preview-value" data-testid={`source-snapshot-fetched-at-${idx}`}>
+          {snapshot?.fetched_at ?? 'n/a'}
+        </span>
+      </div>
+      <div className="source-snapshot-row">
+        <span className="source-preview-key">observed/captured</span>
+        <span className="source-preview-value" data-testid={`source-observed-captured-${idx}`}>
+          {provenance?.observed_at ?? 'n/a'} / {provenance?.captured_at ?? 'n/a'}
         </span>
       </div>
     </div>
@@ -587,6 +627,12 @@ export default function ResearchPanel({
                   data-testid={`source-freshness-${idx}`}
                 >
                   {(source.provenance?.freshness ?? 'unknown').toUpperCase()}
+                </span>
+                <span
+                  className={stateLabelBadgeClass(source.provenance?.state_label ?? 'unknown')}
+                  data-testid={`source-state-label-${idx}`}
+                >
+                  {(source.provenance?.state_label ?? 'unknown').toUpperCase()}
                 </span>
                 <span
                   className={snapshotKindBadgeClass(source.provenance?.snapshot?.snapshot_kind ?? 'unknown')}

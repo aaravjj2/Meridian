@@ -97,6 +97,12 @@ def test_research_sse_stream_emits_complete() -> None:
     assert brief.snapshot_summary is not None
     assert all(source.provenance is not None for source in brief.sources)
     assert all(source.provenance and source.provenance.snapshot is not None for source in brief.sources)
+    assert all(
+        source.provenance and source.provenance.state_label in {"fixture", "cached", "live", "derived", "unknown"}
+        for source in brief.sources
+    )
+    assert isinstance(brief.snapshot_summary.get("state_label_counts"), dict)
+    assert isinstance(brief.snapshot_summary.get("timing_summary"), dict)
     assert isinstance(complete.get("provenance"), dict)
     assert isinstance(complete.get("snapshot"), dict)
     assert isinstance(complete.get("evaluation"), dict)

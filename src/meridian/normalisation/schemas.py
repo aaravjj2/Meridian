@@ -75,6 +75,7 @@ class SourceProvenance(BaseModel):
     source_ref: str
     tool_name: str
     mode: Literal["demo", "live"]
+    state_label: Literal["fixture", "cached", "live", "derived", "unknown"] = "unknown"
     cache_lineage: Literal["fixture", "cache", "fresh_pull", "derived", "unknown"] = "unknown"
     observed_at: str | None = None
     captured_at: str

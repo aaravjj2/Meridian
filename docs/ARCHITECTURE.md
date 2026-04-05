@@ -385,6 +385,12 @@ session via `/research/sessions/{id}/review` and surfaced in workspace UI with s
 includes claim/source linkage, conflict linkage, freshness acceptability, provenance completeness, evaluation status,
 template metadata coverage, and snapshot completeness.
 
+Wave 17 hardens controlled live-mode semantics across payloads, persistence, exports, and UI surfaces. Source-level
+provenance now carries an explicit normalized `state_label` (`fixture|cached|live|derived|unknown`) in addition to
+snapshot kind and cache lineage. Snapshot/provenance summaries include deterministic state counts plus a timing
+summary (`latest_fetched_at`, `latest_cached_at`, `latest_generated_at`) so fixture/cached/live behavior remains
+auditable instead of implicit.
+
 ---
 
 ## Deployment Architecture

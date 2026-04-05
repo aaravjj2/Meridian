@@ -13,12 +13,15 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await expect(page.getByTestId('brief-template-title')).toContainText('Macro outlook')
   await page.getByTestId('claim-link-bull-1-inversion-easing').click()
   await expect(page.getByTestId('evidence-drilldown')).toBeVisible()
+  await expect(page.getByTestId('source-state-label-0')).toBeVisible()
 
   await page.getByTestId('save-session-button').click()
   await expect(page.getByTestId('workspace-status')).toContainText('Saved session', { timeout: 15000 })
   await expect(page.getByTestId('workspace-item-0')).toBeVisible()
   await expect(page.getByTestId('workspace-evaluation-0')).toBeVisible()
   await expect(page.getByTestId('workspace-snapshot-0')).toBeVisible()
+  await expect(page.getByTestId('workspace-state-labels-0')).toBeVisible()
+  await expect(page.getByTestId('workspace-live-metadata-0')).toBeVisible()
 
   await page.getByTestId('query-template-select').selectOption('thesis_change_compare')
   await page.getByTestId('query-input').fill('Continue from this session with an event-probability perspective.')
@@ -108,6 +111,7 @@ test('workspace persistence: manage, compare, integrity, export, and continue', 
   await page.locator('[data-testid^="claim-link-"]').first().click()
   await expect(page.getByTestId('active-claim-id')).toBeVisible()
   await expect(page.getByTestId('source-preview-0')).toBeVisible()
+  await expect(page.getByTestId('source-state-label-detail-0')).toBeVisible()
   await expect(page.getByTestId('source-snapshot-id-0')).toBeVisible()
 
   await page.getByTestId('workspace-export-current-json').click()

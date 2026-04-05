@@ -95,6 +95,8 @@ def test_workspace_save_list_get_and_export_roundtrip() -> None:
     assert listing["sessions"][0]["template_id"] == "macro_outlook"
     assert listing["sessions"][0]["evaluation_passed"] is True
     assert isinstance(listing["sessions"][0]["snapshot_kind_counts"], dict)
+    assert isinstance(listing["sessions"][0]["state_label_counts"], dict)
+    assert "latest_generated_at" in listing["sessions"][0]
     assert listing["sessions"][0]["snapshot_signature"]
 
     loaded = client.get(f"/api/v1/research/sessions/{saved['id']}")
@@ -438,6 +440,9 @@ def test_workspace_phase5_management_compare_bundle_and_integrity() -> None:
     assert bundle_payload["files"]["integrity.json"]["signature_valid"] is True
     assert bundle_payload["files"]["evaluation.json"]["version"] == "phase-7"
     assert bundle_payload["files"]["provenance.json"]["snapshot_summary"]["snapshot_count"] >= 1
+    assert isinstance(bundle_payload["files"]["provenance.json"]["live_mode_metadata"], dict)
+    assert isinstance(bundle_payload["files"]["provenance.json"]["live_mode_metadata"]["state_label_counts"], dict)
+    assert isinstance(bundle_payload["files"]["provenance.json"]["live_mode_metadata"]["timing_summary"], dict)
     assert bundle_payload["files"]["provenance.json"]["snapshot_signature"]
     assert bundle_payload["files"]["timeline.json"]["timeline_signature"]
     assert bundle_payload["manifest"]["section_signatures"]["report.md"]

@@ -139,6 +139,26 @@ def _cache_lineage_from_snapshot_kind(snapshot_kind: str) -> str:
     return "unknown"
 
 
+def _state_label_from_provenance(snapshot_kind: str, cache_lineage: str) -> str:
+    if snapshot_kind == "fixture" or cache_lineage == "fixture":
+        return "fixture"
+    if snapshot_kind == "cache" or cache_lineage == "cache":
+        return "cached"
+    if snapshot_kind == "live_capture" or cache_lineage == "fresh_pull":
+        return "live"
+    if snapshot_kind == "derived" or cache_lineage == "derived":
+        return "derived"
+    return "unknown"
+
+
+def _latest_iso_timestamp(values: list[str]) -> str | None:
+    parsed = [_parse_iso(value) for value in values if value]
+    parsed = [item for item in parsed if item is not None]
+    if not parsed:
+        return None
+    return max(parsed).isoformat().replace("+00:00", "Z")
+
+
 def _preview_timestamp(preview: dict[str, Any], keys: list[str]) -> str | None:
     for key in keys:
         raw = preview.get(key)
@@ -215,6 +235,7 @@ def _attach_provenance_and_evaluation(
     freshness_counts: Counter[str] = Counter()
     snapshot_kind_counts: Counter[str] = Counter()
     cache_lineage_counts: Counter[str] = Counter()
+    state_label_counts: Counter[str] = Counter()
     freshness_by_snapshot_kind: dict[str, Counter[str]] = {
         "fixture": Counter(),
         "cache": Counter(),
@@ -222,6 +243,9 @@ def _attach_provenance_and_evaluation(
         "derived": Counter(),
         "unknown": Counter(),
     }
+    fetched_at_values: list[str] = []
+    cached_at_values: list[str] = []
+    generated_at_values: list[str] = []
     snapshot_checksum_coverage = 0
 
     if not isinstance(sources, list):
@@ -254,6 +278,7 @@ def _attach_provenance_and_evaluation(
         cache_lineage = str(existing.get("cache_lineage") or _cache_lineage_from_snapshot_kind(snapshot_kind))
         if cache_lineage not in {"fixture", "cache", "fresh_pull", "derived", "unknown"}:
             cache_lineage = _cache_lineage_from_snapshot_kind(snapshot_kind)
+        state_label = _state_label_from_provenance(snapshot_kind=snapshot_kind, cache_lineage=cache_lineage)
 
         dataset = str(existing_snapshot.get("dataset") or _snapshot_dataset(source_type, source_id, preview))
         dataset_version = existing_snapshot.get("dataset_version") or preview.get("dataset_version")
@@ -280,6 +305,13 @@ def _attach_provenance_and_evaluation(
         elif snapshot_kind == "derived":
             generated_at = generated_at or captured_at
 
+        if isinstance(fetched_at, str) and fetched_at.strip():
+            fetched_at_values.append(fetched_at)
+        if isinstance(cached_at, str) and cached_at.strip():
+            cached_at_values.append(cached_at)
+        if isinstance(generated_at, str) and generated_at.strip():
+            generated_at_values.append(generated_at)
+
         snapshot_signature_payload = {
             "source_ref": source_ref,
             "snapshot_kind": snapshot_kind,
@@ -299,6 +331,7 @@ def _attach_provenance_and_evaluation(
             "source_ref": source_ref,
             "tool_name": str(existing.get("tool_name") or _source_tool_name(source_type)),
             "mode": source_mode,
+            "state_label": state_label,
             "cache_lineage": cache_lineage,
             "observed_at": observed_at,
             "captured_at": str(existing.get("captured_at") or captured_at),
@@ -320,6 +353,7 @@ def _attach_provenance_and_evaluation(
         freshness_counts[source["provenance"]["freshness"]] += 1
         snapshot_kind_counts[snapshot_kind] += 1
         cache_lineage_counts[cache_lineage] += 1
+        state_label_counts[state_label] += 1
         freshness_by_snapshot_kind[snapshot_kind][source["provenance"]["freshness"]] += 1
         if checksum_sha256:
             snapshot_checksum_coverage += 1
@@ -329,6 +363,13 @@ def _attach_provenance_and_evaluation(
         "mode": mode,
         "deterministic": mode == "demo",
         "source_count": len(sources),
+        "state_label_counts": {
+            "fixture": state_label_counts.get("fixture", 0),
+            "cached": state_label_counts.get("cached", 0),
+            "live": state_label_counts.get("live", 0),
+            "derived": state_label_counts.get("derived", 0),
+            "unknown": state_label_counts.get("unknown", 0),
+        },
         "freshness_counts": {
             "fresh": freshness_counts.get("fresh", 0),
             "aging": freshness_counts.get("aging", 0),
@@ -342,6 +383,13 @@ def _attach_provenance_and_evaluation(
         "mode": mode,
         "deterministic": mode == "demo",
         "snapshot_count": len(sources),
+        "state_label_counts": {
+            "fixture": state_label_counts.get("fixture", 0),
+            "cached": state_label_counts.get("cached", 0),
+            "live": state_label_counts.get("live", 0),
+            "derived": state_label_counts.get("derived", 0),
+            "unknown": state_label_counts.get("unknown", 0),
+        },
         "snapshot_kind_counts": {
             "fixture": snapshot_kind_counts.get("fixture", 0),
             "cache": snapshot_kind_counts.get("cache", 0),
@@ -364,6 +412,11 @@ def _attach_provenance_and_evaluation(
                 "unknown": counters.get("unknown", 0),
             }
             for kind, counters in freshness_by_snapshot_kind.items()
+        },
+        "timing_summary": {
+            "latest_fetched_at": _latest_iso_timestamp(fetched_at_values),
+            "latest_cached_at": _latest_iso_timestamp(cached_at_values),
+            "latest_generated_at": _latest_iso_timestamp(generated_at_values),
         },
         "snapshot_checksum_coverage": snapshot_checksum_coverage,
     }
@@ -558,6 +611,15 @@ def _attach_provenance_and_evaluation(
             for source in sources
             if isinstance(source, dict)
         },
+        "source_state_label": {
+            f"{source.get('type')}:{source.get('id')}": (
+                source.get("provenance", {}).get("state_label")
+                if isinstance(source, dict)
+                else "unknown"
+            )
+            for source in sources
+            if isinstance(source, dict)
+        },
         "freshness_policy": {
             "version": "wave10-v1",
             "violation_count": len(freshness_policy_violations),
@@ -600,6 +662,11 @@ def _attach_provenance_and_evaluation(
             "live_capture_snapshot_count": snapshot_kind_counts.get("live_capture", 0),
             "derived_snapshot_count": snapshot_kind_counts.get("derived", 0),
             "unknown_snapshot_count": snapshot_kind_counts.get("unknown", 0),
+            "fixture_state_count": state_label_counts.get("fixture", 0),
+            "cached_state_count": state_label_counts.get("cached", 0),
+            "live_state_count": state_label_counts.get("live", 0),
+            "derived_state_count": state_label_counts.get("derived", 0),
+            "unknown_state_count": state_label_counts.get("unknown", 0),
             "snapshot_checksum_coverage": snapshot_checksum_coverage,
         },
     }

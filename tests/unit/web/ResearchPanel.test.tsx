@@ -161,6 +161,7 @@ describe('ResearchPanel', () => {
               source_ref: `${source.type}:${source.id}`,
               tool_name: source.type === 'market' ? 'prediction_market_fetch' : 'fred_fetch',
               mode: 'demo',
+              state_label: 'fixture',
               cache_lineage: 'fixture',
               observed_at: '2026-03-01T00:00:00Z',
               captured_at: '2026-04-02T00:00:00Z',
@@ -208,10 +209,14 @@ describe('ResearchPanel', () => {
     expect(screen.getByTestId('policy-warning-panel')).toBeInTheDocument()
     expect(screen.getByTestId('policy-warning-item-0')).toHaveTextContent('news:fed-rate-decision (stale)')
     expect(screen.getByTestId('source-freshness-0')).toHaveTextContent('AGING')
+    expect(screen.getByTestId('source-state-label-0')).toHaveTextContent('FIXTURE')
     expect(screen.getByTestId('source-snapshot-kind-badge-0')).toHaveTextContent('FIXTURE')
 
     fireEvent.click(screen.getByTestId('source-item-0'))
     expect(screen.getByTestId('source-snapshot-id-0')).toHaveTextContent('snap-T10Y2Y')
+    expect(screen.getByTestId('source-state-label-detail-0')).toHaveTextContent('fixture')
     expect(screen.getByTestId('source-cache-lineage-0')).toHaveTextContent('fixture')
+    expect(screen.getByTestId('source-snapshot-generated-at-0')).toHaveTextContent('2026-03-01T00:00:00Z')
+    expect(screen.getByTestId('source-snapshot-fetched-at-0')).toHaveTextContent('n/a')
   })
 })

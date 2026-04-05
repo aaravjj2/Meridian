@@ -92,6 +92,11 @@ function savedAtLabel(value: string): string {
   return value.replace('T', ' ').replace('Z', ' UTC')
 }
 
+function optionalTimestampLabel(value: string | null | undefined): string {
+  if (!value) return 'n/a'
+  return value.replace('T', ' ').replace('Z', ' UTC')
+}
+
 function compactText(value: string, limit = 140): string {
   const normalized = value.trim()
   if (normalized.length <= limit) {
@@ -986,6 +991,20 @@ export default function WorkspacePanel({
                     {session.snapshot_kind_counts.live_capture ?? 0}/
                     {session.snapshot_kind_counts.derived ?? 0}/
                     {session.snapshot_kind_counts.unknown ?? 0}
+                  </p>
+                ) : null}
+                {session.state_label_counts ? (
+                  <p className="workspace-item-snapshot" data-testid={`workspace-state-labels-${idx}`}>
+                    States fixture/cached/live/derived/unknown: {session.state_label_counts.fixture ?? 0}/
+                    {session.state_label_counts.cached ?? 0}/{session.state_label_counts.live ?? 0}/
+                    {session.state_label_counts.derived ?? 0}/{session.state_label_counts.unknown ?? 0}
+                  </p>
+                ) : null}
+                {session.latest_fetched_at || session.latest_cached_at || session.latest_generated_at ? (
+                  <p className="workspace-item-meta" data-testid={`workspace-live-metadata-${idx}`}>
+                    fetched {optionalTimestampLabel(session.latest_fetched_at)} | cached{' '}
+                    {optionalTimestampLabel(session.latest_cached_at)} | generated{' '}
+                    {optionalTimestampLabel(session.latest_generated_at)}
                   </p>
                 ) : null}
                 {session.snapshot_signature ? (

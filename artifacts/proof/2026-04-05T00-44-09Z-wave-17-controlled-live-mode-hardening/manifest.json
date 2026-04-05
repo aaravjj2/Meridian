@@ -1,0 +1,435 @@
+{
+  "slug": "wave-17-controlled-live-mode-hardening",
+  "generated_at": "2026-04-05T00-44-09Z",
+  "git_sha": "8f70ef2cb586a1196abefc1d2f749f05ee93595b",
+  "git_branch": "main",
+  "git_dirty": true,
+  "git_dirty_files": [
+    "M README.md",
+    "M apps/api/routers/research.py",
+    "M apps/web/components/Terminal/ResearchPanel.tsx",
+    "M apps/web/components/Terminal/WorkspacePanel.tsx",
+    "M apps/web/components/Terminal/types.ts",
+    "M docs/API.md",
+    "M docs/ARCHITECTURE.md",
+    "M docs/schema.md",
+    "M package-lock.json",
+    "M package.json",
+    "M src/meridian/normalisation/schemas.py",
+    "M src/meridian/workspace/session_store.py",
+    "M tests/e2e/test_workspace_persistence.spec.ts",
+    "M tests/unit/api/test_research.py",
+    "M tests/unit/api/test_workspace.py",
+    "M tests/unit/web/HomePageWorkspace.test.tsx",
+    "M tests/unit/web/ResearchPanel.test.tsx"
+  ],
+  "objective": "Wave 17 controlled live-mode hardening with explicit source state labels, timing visibility, and export metadata strengthening.",
+  "scope": [
+    "Add normalized source provenance state_label across API, persistence, and frontend types.",
+    "Expose snapshot/provenance state_label counts and fetched/cached/generated timing summaries in terminal and workspace views.",
+    "Strengthen saved session and bundle export provenance with live_mode_metadata for state/timing traceability.",
+    "Cover state-label and timing surfaces with updated API, web unit, and e2e tests."
+  ],
+  "commands_run": [
+    "npm run tsc",
+    "npm run vitest -- --reporter=json --outputFile /home/aarav/Aarav/Meridian/artifacts/harness/2026-04-05T00-43-00Z-wave-17-controlled-live-mode-hardening/vitest-report.json",
+    "/home/aarav/Aarav/Meridian/.venv/bin/python -m pytest -q --junitxml /home/aarav/Aarav/Meridian/artifacts/harness/2026-04-05T00-43-00Z-wave-17-controlled-live-mode-hardening/pytest-report.xml",
+    "npm run playwright -- --reporter=json",
+    "Playwright MCP exploratory check: PASS (source badge, workspace state counts, workspace live metadata, source detail timestamps)."
+  ],
+  "results": {
+    "all_green": true,
+    "test_layers_green": true,
+    "layers": {
+      "typescript": {
+        "exit_code": 0,
+        "passed": null,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0,
+        "duration_ms": 915
+      },
+      "frontend_unit": {
+        "exit_code": 0,
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0,
+        "duration_ms": 1983
+      },
+      "backend_unit": {
+        "exit_code": 0,
+        "passed": 62,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0,
+        "duration_ms": 46767
+      },
+      "e2e": {
+        "exit_code": 0,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0,
+        "duration_ms": 28795
+      }
+    },
+    "requirements": {
+      "typescript_errors": 0,
+      "frontend_failed": 0,
+      "frontend_skipped": 0,
+      "backend_failed": 0,
+      "backend_skipped": 0,
+      "e2e_failed": 0,
+      "e2e_skipped": 0,
+      "e2e_retries": 0
+    },
+    "determinism_signature_sha256": "dfc56f63c4edad9f646f9631f0f6af0e7d62952966d4b01951703b59bf3330b1"
+  },
+  "root_causes": [
+    "Initial harness e2e collision on port 3100 due to stale Next server process; resolved by terminating listener and rerunning harness."
+  ],
+  "known_limitations": [],
+  "deployment_status": "Vercel config present; frontend rewrite target configured via MERIDIAN_API_BASE_URL=https://meridian-api.railway.app.",
+  "deployment_evidence": [
+    "vercel.json"
+  ],
+  "harness_summary": "artifacts/harness/2026-04-05T00-43-00Z-wave-17-controlled-live-mode-hardening/summary.json",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "82bd422dbfdea0dd94a3f4fc8fdd5b8eac180a8e158eb457bfe4a9bc498ba47d",
+      "size": 433
+    },
+    {
+      "path": "TOUR.webm",
+      "sha256": "3cd944f5c4941200432c7c971099d8e3bc06dfc86943aa0d3bd3b088d59379ff",
+      "size": 180617
+    },
+    {
+      "path": "deployment/ci.yml",
+      "sha256": "558604a54fb0eb4e4af61028bf43712e258460eded58a3d26d293e321e289a94",
+      "size": 797
+    },
+    {
+      "path": "deployment/vercel.json",
+      "sha256": "9b5e79d0c68b91c7c37351be091f0c0614f5be110ae3a724aa41cf1d60644dd6",
+      "size": 398
+    },
+    {
+      "path": "manifest.json",
+      "sha256": "2d06b9dcdd56a6c32740ff2e0b1cc401b0d71883634c81e81f1d4956de5385b6",
+      "size": 3729
+    },
+    {
+      "path": "playwright-report/data/106dc73d8c507aa2eab7cdd7dd76d8dd5232557d.zip",
+      "sha256": "5dcc71ef6a70343c4dd9f74bc71a988abde617bc4187ae043d655cf17743275d",
+      "size": 762342
+    },
+    {
+      "path": "playwright-report/data/29d2ba9f54f2e2957b256cce7298b0975ffa93ad.png",
+      "sha256": "a59eae04a773e31ca6a385271b0f19c4887ef99dda3a1909f01bd495a557614e",
+      "size": 473633
+    },
+    {
+      "path": "playwright-report/data/2e544fb192f5629d39e0ac7f41d526f251e1b2e3.png",
+      "sha256": "80acc2d27bb309e860a5fb30fd53183657d712ff4e431cad5b923f5c7f6d41f9",
+      "size": 502485
+    },
+    {
+      "path": "playwright-report/data/32ea812c57b380fa897c75719ecbb4d674d76a33.zip",
+      "sha256": "6e04d05a0d17d434cc36730aaeb1bdf6b89173d18879b6b49716395a43051b5e",
+      "size": 489422
+    },
+    {
+      "path": "playwright-report/data/40933a6049e11ccc33daa81cd41d88e690ded530.zip",
+      "sha256": "f9a3b315e19c29af404604318d4591caf043014a291b24d5b4f098d9b9560586",
+      "size": 786414
+    },
+    {
+      "path": "playwright-report/data/468c269e869242dd86229bc38349b54af4a42e87.zip",
+      "sha256": "69d482429cbe9bb40570c5757e1f96864c8f1598d87a2f8934d2e635a2d7b37e",
+      "size": 821203
+    },
+    {
+      "path": "playwright-report/data/5133f00e240bbf4542bfeca2d8aba0a31e630fa9.webm",
+      "sha256": "957f9194c55d1b72210c19976d519bda3f3a46fb9c938c6971a3d6761ea23477",
+      "size": 190301
+    },
+    {
+      "path": "playwright-report/data/6f0a5669844a20a26497f21f24c9c129abe8cf1e.md",
+      "sha256": "5c23e016ee60cb9b325c82fd96f1e886f00301bf94ef99eeb4dfbf98867bad19",
+      "size": 9123
+    },
+    {
+      "path": "playwright-report/data/8a4e10dbe116f66c5819b664306b9ac4e08b6ee2.webm",
+      "sha256": "633a0d877858fbaad125e1f6b7c9de6f21eafd5b0c41112d8ab00920ad36cdc4",
+      "size": 190301
+    },
+    {
+      "path": "playwright-report/data/8d168966cd8234f141b0c75a22572bf5fe872e4e.webm",
+      "sha256": "1f505cb8f5b459643ff8494dfab333b3d6504f534876247b4989bf30afc32905",
+      "size": 182578
+    },
+    {
+      "path": "playwright-report/data/95133217455737c4829298026a3ad9075aba0093.md",
+      "sha256": "f9ca0e97a5f02a9bb3ec5928cc7d5bce0373af9625974d6e7d6c651b5a5cfff6",
+      "size": 5349
+    },
+    {
+      "path": "playwright-report/data/9e275ce899bcccb018372a6f3201ee1f857a9631.md",
+      "sha256": "d19a08dc338de3cc614f7e7d8042a14c505638d983cbbdbb11f180d8590dc82a",
+      "size": 8936
+    },
+    {
+      "path": "playwright-report/data/a8c8fcb3a3b75adf8217f4d76cf8f5e960c0cc13.webm",
+      "sha256": "c12c025cd670db5158124fc625e5fe2d500f0adf261198876f7f9ac3e4cc884a",
+      "size": 190301
+    },
+    {
+      "path": "playwright-report/data/b141ed025fa861c09ddb2feac7ab1f0420a0e5d8.webm",
+      "sha256": "1204f6ab9904601a186d73d5015516e8168f3af4f26e0edf70dd7f728819242f",
+      "size": 75178
+    },
+    {
+      "path": "playwright-report/data/ce6c9b4aae997bd7ba549650aa838a49de0843d6.png",
+      "sha256": "af5b7745f9d6b3925295016a60d794ce82dc116ea4d02c3ff84762be7dd0263d",
+      "size": 381809
+    },
+    {
+      "path": "playwright-report/data/d1ea46426c9b7557fc20c43160aeb3a11979aa1b.md",
+      "sha256": "93d49ea57b92cf6e69eafb5ef9aa8e16fcc1adca3c1e631fce379995919ed382",
+      "size": 9826
+    },
+    {
+      "path": "playwright-report/data/d6e93bf46697914aa09d4138550c2c19053084c1.zip",
+      "sha256": "671b19d606f4b930cceb14568ef127ae495f3cf1971bda1d288111db3b45bae6",
+      "size": 821414
+    },
+    {
+      "path": "playwright-report/data/dd60b081e081eb4c864a2a52f8228802b072ac83.md",
+      "sha256": "e959b8e7f20c3a7a5c9108942b30e69e63a148e78f592f47bb2473514213f1a0",
+      "size": 2883
+    },
+    {
+      "path": "playwright-report/index.html",
+      "sha256": "f611736c1de1d832442bf2ddbec33b9c5694f303c010ebdd2829de597cb458b5",
+      "size": 535260
+    },
+    {
+      "path": "playwright-report/trace/assets/codeMirrorModule-DS0FLvoc.js",
+      "sha256": "dd5360bef14066001507518e8c2f6b3e525ac1cc41fa7fdf23c34e96f4efadb1",
+      "size": 313023
+    },
+    {
+      "path": "playwright-report/trace/assets/defaultSettingsView-GTWI-W_B.js",
+      "sha256": "9c48649a4dfc1ba799a687c4ac96a6a9ada57696116044c227c67c51ebbfdce7",
+      "size": 643623
+    },
+    {
+      "path": "playwright-report/trace/codeMirrorModule.DYBRYzYX.css",
+      "sha256": "70bf421a13e87857ca684bfa2cc55f06d7c5a50f71253a3ff1d74769b14a957e",
+      "size": 6421
+    },
+    {
+      "path": "playwright-report/trace/codicon.DCmgc-ay.ttf",
+      "sha256": "0f1d5219934e96e83b8db162d60b4d8c09b5de1e7d38031cbafe4a3c0f2889c9",
+      "size": 80340
+    },
+    {
+      "path": "playwright-report/trace/defaultSettingsView.B4dS75f0.css",
+      "sha256": "844a328b121a95937eec1893b391d5a3473194568dc585ba927f16c8ed0f90c8",
+      "size": 110544
+    },
+    {
+      "path": "playwright-report/trace/index.C5466mMT.js",
+      "sha256": "452eab81f93a4001fee058fa2cd1d4e245eed3d28bfe10f7296a6c099ce8d64f",
+      "size": 6509
+    },
+    {
+      "path": "playwright-report/trace/index.CzXZzn5A.css",
+      "sha256": "4ec2a3d49db259ce9025cb4fa48d73b1afd58215e567eef3b4a4cbf76c1674d9",
+      "size": 2111
+    },
+    {
+      "path": "playwright-report/trace/index.html",
+      "sha256": "4c31886e6b746d02ab0ee0f5f5b8524d855573d6fdc99bf1a280db90a51e0987",
+      "size": 2283
+    },
+    {
+      "path": "playwright-report/trace/manifest.webmanifest",
+      "sha256": "d8540500603a32a39fe7e5a0375dc0f9ebafd11118e06a846db7efc608223ab9",
+      "size": 429
+    },
+    {
+      "path": "playwright-report/trace/playwright-logo.svg",
+      "sha256": "6b0a4367bdeab10995bc239278f04c68c10e48adbec15e799e01909a0d66dcb9",
+      "size": 5033
+    },
+    {
+      "path": "playwright-report/trace/snapshot.html",
+      "sha256": "e192546675329f804bb9d4afbd96f7a1368e53cc42a05f0cc4a57949df7bc245",
+      "size": 935
+    },
+    {
+      "path": "playwright-report/trace/sw.bundle.js",
+      "sha256": "c76aa023df69a0835d12bfae95dddf91c5c90e4e87791d64f41aa051f394d678",
+      "size": 95084
+    },
+    {
+      "path": "playwright-report/trace/uiMode.Btcz36p_.css",
+      "sha256": "bfe8330cc78eeb1b1c4d8983aab7068d725526e407903ee19e515996250cb221",
+      "size": 60239
+    },
+    {
+      "path": "playwright-report/trace/uiMode.Vipi55dB.js",
+      "sha256": "fb1005d82811458ffd6ae041d79cc7ebabcb6073f7fe03b5f7694c093433ba7b",
+      "size": 38156
+    },
+    {
+      "path": "playwright-report/trace/uiMode.html",
+      "sha256": "6cb988cb543334e85350fea36b4ccecae80e76294e0f6c326d7067a1cfa7aaaa",
+      "size": 647
+    },
+    {
+      "path": "playwright-report/trace/xtermModule.DYP7pi_n.css",
+      "sha256": "7c5a01f382f76539fc9b4db6b18e18a7035741845fd14968c5cdc0a7e373d817",
+      "size": 4150
+    },
+    {
+      "path": "screenshots/homepage.png",
+      "sha256": "9d137e29c24d51567e1f47c0a77449ca28698463e9d218c9c843d7a490c50169",
+      "size": 54743
+    },
+    {
+      "path": "screenshots/methodology.png",
+      "sha256": "b590174b6666c0c6a1e68742cca57d6842fa7ccc5d30c523f46b4f944d658609",
+      "size": 451548
+    },
+    {
+      "path": "screenshots/screener.png",
+      "sha256": "3dd69f3e6b6e4980dc060123ebf4eea44790453abea2866229491c248ad16d4c",
+      "size": 364280
+    },
+    {
+      "path": "test-results/backend_unit.log",
+      "sha256": "096458ae62cfca7039c8fc43886a7d1844cda3ab6a9ead42f9a99d731c58f18c",
+      "size": 337
+    },
+    {
+      "path": "test-results/e2e.log",
+      "sha256": "d75d515ebf87741a9622242e9a7c0af2236109dd18d63228b5bdde75b24ba53c",
+      "size": 14203
+    },
+    {
+      "path": "test-results/frontend_unit.log",
+      "sha256": "ad909ff767caba6451a6346117a30b5e0356fdbd7a2000260ee00b056fbe8e45",
+      "size": 739
+    },
+    {
+      "path": "test-results/harness-summary.json",
+      "sha256": "edbc8f1d0606e974db4628d54e56d5eb2df98ecf71a264d458899b0377dca13f",
+      "size": 2999
+    },
+    {
+      "path": "test-results/playwright/.last-run.json",
+      "sha256": "91d1c43004802cd49950d78eb11c8fa7d05da8ffffe219a8b13b2f561bc00903",
+      "size": 45
+    },
+    {
+      "path": "test-results/playwright/test_methodology-methodology-page-renders/test-finished-1.png",
+      "sha256": "ab2ff13a0e0594b151d6cde55721ea51435064161c616801cb418ca0804701e4",
+      "size": 286473
+    },
+    {
+      "path": "test-results/playwright/test_methodology-methodology-page-renders/trace.zip",
+      "sha256": "3670d1d93060ec7d3117844cbca70c5d0de7c7f25c31e9449754cecfdaf92e82",
+      "size": 593890
+    },
+    {
+      "path": "test-results/playwright/test_methodology-methodology-page-renders/video.webm",
+      "sha256": "909a7627196263bf4f6ea2031646e67814c783e3697616c3e90280227e9becdf",
+      "size": 49080
+    },
+    {
+      "path": "test-results/playwright/test_regime-regime-strip-renders-all-dimensions/test-finished-1.png",
+      "sha256": "7e325acd42651bce62fee66b42052ee675ad451014724494f6e1d097ebfa8648",
+      "size": 33021
+    },
+    {
+      "path": "test-results/playwright/test_regime-regime-strip-renders-all-dimensions/trace.zip",
+      "sha256": "268fdf08501983ca631362de9c7f91c6d3fe456a1ebacc0d891c45d6886c11e7",
+      "size": 341031
+    },
+    {
+      "path": "test-results/playwright/test_regime-regime-strip-renders-all-dimensions/video.webm",
+      "sha256": "a11c310bf438d293c341fa866acb8c178c639a795a64048ef6bf5481ee28388d",
+      "size": 59237
+    },
+    {
+      "path": "test-results/playwright/test_research_flow-research-flow-query-to-complete-brief/test-finished-1.png",
+      "sha256": "9f0d6805ab7ce4e850c523ade373d11c33a865cc2bd03ca2d7d3dfd8494c4dec",
+      "size": 84316
+    },
+    {
+      "path": "test-results/playwright/test_research_flow-research-flow-query-to-complete-brief/trace.zip",
+      "sha256": "cfe142af2c878edbb3223f695d657d00e71b44382865c9a4edd0d569c4dd5ee4",
+      "size": 4206872
+    },
+    {
+      "path": "test-results/playwright/test_research_flow-research-flow-query-to-complete-brief/video.webm",
+      "sha256": "9c4d2f119be0838c7ee3e3a9bf19202f49233fb5e0828d48da36b2c90f103ad0",
+      "size": 471547
+    },
+    {
+      "path": "test-results/playwright/test_screener-screener-loads-sorts-filters-opens-drawer/test-finished-1.png",
+      "sha256": "92eaf03dfee6fea5513b480e0f1715a08cc370c151d4fff0dbf22eb22eb6a8c0",
+      "size": 199607
+    },
+    {
+      "path": "test-results/playwright/test_screener-screener-loads-sorts-filters-opens-drawer/trace.zip",
+      "sha256": "6c7ec7b381ebe1cb4b56eda115a2a0b7fa99ad717351ca9d9b4a28c5d833fd1c",
+      "size": 794476
+    },
+    {
+      "path": "test-results/playwright/test_screener-screener-loads-sorts-filters-opens-drawer/video.webm",
+      "sha256": "17dc57ba0d8306344f75294562cd7dd00f95b48eb0fd68ce54de0a299f0bcb7a",
+      "size": 103905
+    },
+    {
+      "path": "test-results/playwright/test_smoke-smoke-homepage-chrome-renders/test-finished-1.png",
+      "sha256": "471b895c7193a2a07ebd85b621d7dad3a281f340bdc57a2521547a907984c399",
+      "size": 40103
+    },
+    {
+      "path": "test-results/playwright/test_smoke-smoke-homepage-chrome-renders/trace.zip",
+      "sha256": "0831b07a5d6f75d83c5df6fd5546b4033b394ddd0b788ea3ee68baa900c03a08",
+      "size": 446053
+    },
+    {
+      "path": "test-results/playwright/test_smoke-smoke-homepage-chrome-renders/video.webm",
+      "sha256": "44bc9af132646fd139adf1096f8e7cddf8bfc7b4f761d3ea75d97845d0d1a790",
+      "size": 66764
+    },
+    {
+      "path": "test-results/playwright/test_workspace_persistence-9f535-tegrity-export-and-continue/test-finished-1.png",
+      "sha256": "bc24ab5f5ab226d72939d906bdb9a54cf985e6b50518654cea38e7d536df6016",
+      "size": 56546
+    },
+    {
+      "path": "test-results/playwright/test_workspace_persistence-9f535-tegrity-export-and-continue/trace.zip",
+      "sha256": "9a113e6f03d7f1f770d121912183a9d52f8dcc777f459dd712b2ba9919970987",
+      "size": 7655470
+    },
+    {
+      "path": "test-results/playwright/test_workspace_persistence-9f535-tegrity-export-and-continue/video.webm",
+      "sha256": "42a1aba319ba208aab687f151d4bbda1a8e002c46aea59511b27340bcd13337e",
+      "size": 839378
+    },
+    {
+      "path": "test-results/typescript.log",
+      "sha256": "ef17287f3b9f04269843c63f21c8fbe3244c432a42fa8e6fcc52f5a0f9433194",
+      "size": 125
+    }
+  ]
+}
