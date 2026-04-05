@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 
 import DerivedIndicatorPanel from '@/components/Terminal/DerivedIndicatorPanel'
 import type { DerivedIndicator } from '@/components/Terminal/types'
@@ -76,6 +76,14 @@ describe('DerivedIndicatorPanel', () => {
     const rocIndicator = screen.getByTestId('derived-indicator-ind-roc-fred-test123')
     expect(rocIndicator).toBeInTheDocument()
 
+    // Reasoning is now collapsed by default, so check for truncated reasoning text
+    expect(screen.getByText(/Rate of change computed from/)).toBeInTheDocument()
+
+    // Expand to show full details
+    const indicatorHeader = screen.getByTestId(`derived-indicator-ind-roc-fred-test123-header`)
+    fireEvent.click(indicatorHeader)
+
+    // Now full details should be visible
     expect(screen.getByTestId(`derived-indicator-ind-roc-fred-test123-reasoning`)).toBeInTheDocument()
     expect(screen.getByTestId(`derived-indicator-ind-roc-fred-test123-sources`)).toBeInTheDocument()
     expect(screen.getByTestId(`derived-indicator-ind-roc-fred-test123-snapshot-kind`)).toBeInTheDocument()
@@ -109,5 +117,56 @@ describe('DerivedIndicatorPanel', () => {
 
     const freshnessValue = screen.getByTestId(`derived-indicator-ind-freshness-aggregate-def-value`)
     expect(freshnessValue).toHaveClass('text-green-600')
+  })
+
+  it('filters indicators by kind', () => {
+    render(<DerivedIndicatorPanel indicators={mockIndicators} />)
+
+    const filterSelect = screen.getByTestId('derived-indicators-filter')
+    expect(filterSelect).toBeInTheDocument()
+
+    // Change filter to rate_of_change
+    fireEvent.change(filterSelect, { target: { value: 'rate_of_change' } })
+
+    // Should only show rate_of_change indicator
+    expect(screen.getByTestId('derived-indicator-ind-roc-fred-test123')).toBeInTheDocument()
+    expect(screen.queryByTestId('derived-indicator-ind-spread-claims-abc')).not.toBeInTheDocument()
+  })
+
+  it('sorts indicators by value', () => {
+    render(<DerivedIndicatorPanel indicators={mockIndicators} />)
+
+    const sortSelect = screen.getByTestId('derived-indicators-sort')
+    expect(sortSelect).toBeInTheDocument()
+
+    // Change sort to title
+    fireEvent.change(sortSelect, { target: { value: 'title' } })
+
+    // Check that all indicators are still present
+    expect(screen.getByTestId('derived-indicator-ind-roc-fred-test123')).toBeInTheDocument()
+    expect(screen.getByTestId('derived-indicator-ind-spread-claims-abc')).toBeInTheDocument()
+    expect(screen.getByTestId('derived-indicator-ind-freshness-aggregate-def')).toBeInTheDocument()
+  })
+
+  it('expands and collapses indicator details', () => {
+    render(<DerivedIndicatorPanel indicators={mockIndicators} />)
+
+    const indicatorHeader = screen.getByTestId(`derived-indicator-ind-roc-fred-test123-header`)
+    const reasoning = screen.queryByTestId(`derived-indicator-ind-roc-fred-test123-reasoning`)
+
+    // Initially reasoning should not be visible (collapsed)
+    expect(reasoning).not.toBeInTheDocument()
+
+    // Click to expand
+    fireEvent.click(indicatorHeader)
+
+    // Now reasoning should be visible
+    expect(screen.getByTestId(`derived-indicator-ind-roc-fred-test123-reasoning`)).toBeInTheDocument()
+
+    // Click to collapse
+    fireEvent.click(indicatorHeader)
+
+    // Reasoning should be hidden again
+    expect(screen.queryByTestId(`derived-indicator-ind-roc-fred-test123-reasoning`)).not.toBeInTheDocument()
   })
 })

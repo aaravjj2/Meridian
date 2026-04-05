@@ -481,6 +481,292 @@ def _compute_aggregate_freshness_indicator(
     return indicators
 
 
+def _compute_volatility_indicators(
+    sources: list[dict[str, Any]],
+    mode: str,
+    captured_at: str,
+) -> list[DerivedIndicator]:
+    """Compute volatility indicators from time series data using standard deviation."""
+    indicators = []
+
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+
+        preview = source.get("preview")
+        if not isinstance(preview, dict):
+            continue
+
+        points = preview.get("points")
+        if not isinstance(points, list) or len(points) < 3:
+            continue
+
+        values = []
+        for pt in points:
+            if isinstance(pt, dict) and "value" in pt:
+                val = pt.get("value")
+                if isinstance(val, (int, float)):
+                    values.append(float(val))
+
+        if len(values) < 3:
+            continue
+
+        mean_val = sum(values) / len(values)
+        variance = sum((v - mean_val) ** 2 for v in values) / len(values)
+        std_dev = variance ** 0.5
+
+        if mean_val != 0:
+            cv = (std_dev / abs(mean_val)) * 100
+        else:
+            cv = 0.0
+
+        source_ref = f"{source.get('type')}:{source.get('id')}"
+        snapshot_id = None
+        snapshot_kind = "derived"
+        provenance = source.get("provenance")
+        if isinstance(provenance, dict):
+            snapshot = provenance.get("snapshot")
+            if isinstance(snapshot, dict):
+                snapshot_id = snapshot.get("snapshot_id")
+                snapshot_kind = snapshot.get("snapshot_kind", "derived")
+
+        indicator_id = f"ind-volatility-{hashlib.sha256(f"{source_ref}{captured_at}".encode()).hexdigest()[:8]}"
+
+        volatility_level = "low"
+        if cv > 20:
+            volatility_level = "high"
+        elif cv > 10:
+            volatility_level = "moderate"
+
+        reasoning = f"Volatility: {std_dev:.2f} (CV: {cv:.1f}%) across {len(values)} data points ({volatility_level} volatility)"
+
+        indicator_signature_payload = {
+            "indicator_id": indicator_id,
+            "source_ref": source_ref,
+            "std_dev": round(std_dev, 4),
+            "coefficient_of_variation": round(cv, 2),
+            "data_point_count": len(values),
+            "computation_timestamp": captured_at,
+        }
+        deterministic_signature = hashlib.sha256(
+            json.dumps(indicator_signature_payload, sort_keys=True).encode()
+        ).hexdigest()
+
+        indicator = DerivedIndicator(
+            indicator_id=indicator_id,
+            title=f"{source.get('id', 'Unknown')} Volatility",
+            value=cv,
+            unit="%",
+            display_hint="Coefficient of variation (%)",
+            computation_kind="volatility",
+            source_refs=[source_ref],
+            snapshot_id=snapshot_id,
+            snapshot_kind=snapshot_kind,
+            computation_timestamp=captured_at,
+            observed_at=None,
+            deterministic=(mode == "demo"),
+            reasoning=reasoning,
+            deterministic_signature=deterministic_signature,
+        )
+        indicators.append(indicator)
+
+    return indicators
+
+
+def _compute_momentum_indicators(
+    sources: list[dict[str, Any]],
+    mode: str,
+    captured_at: str,
+) -> list[DerivedIndicator]:
+    """Compute momentum indicators using recent vs older price comparison."""
+    indicators = []
+
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+
+        preview = source.get("preview")
+        if not isinstance(preview, dict):
+            continue
+
+        points = preview.get("points")
+        if not isinstance(points, list) or len(points) < 4:
+            continue
+
+        values = []
+        for pt in points:
+            if isinstance(pt, dict) and "value" in pt:
+                val = pt.get("value")
+                if isinstance(val, (int, float)):
+                    values.append(float(val))
+
+        if len(values) < 4:
+            continue
+
+        recent = values[-1]
+        prior = values[0]
+        momentum = ((recent - prior) / prior * 100) if prior != 0 else 0.0
+
+        source_ref = f"{source.get('type')}:{source.get('id')}"
+        snapshot_id = None
+        snapshot_kind = "derived"
+        provenance = source.get("provenance")
+        if isinstance(provenance, dict):
+            snapshot = provenance.get("snapshot")
+            if isinstance(snapshot, dict):
+                snapshot_id = snapshot.get("snapshot_id")
+                snapshot_kind = snapshot.get("snapshot_kind", "derived")
+
+        indicator_id = f"ind-momentum-{hashlib.sha256(f"{source_ref}{captured_at}".encode()).hexdigest()[:8]}"
+
+        momentum_signal = "neutral"
+        if momentum > 2:
+            momentum_signal = "strong bullish"
+        elif momentum > 0.5:
+            momentum_signal = "bullish"
+        elif momentum < -2:
+            momentum_signal = "strong bearish"
+        elif momentum < -0.5:
+            momentum_signal = "bearish"
+
+        reasoning = f"Momentum: {momentum:+.1f}% from {prior:.2f} to {recent:.2f} ({momentum_signal} signal)"
+
+        indicator_signature_payload = {
+            "indicator_id": indicator_id,
+            "source_ref": source_ref,
+            "prior_value": prior,
+            "recent_value": recent,
+            "momentum_pct": round(momentum, 2),
+            "computation_timestamp": captured_at,
+        }
+        deterministic_signature = hashlib.sha256(
+            json.dumps(indicator_signature_payload, sort_keys=True).encode()
+        ).hexdigest()
+
+        indicator = DerivedIndicator(
+            indicator_id=indicator_id,
+            title=f"{source.get('id', 'Unknown')} Momentum",
+            value=momentum,
+            unit="%",
+            display_hint="Price change over series (%)",
+            computation_kind="momentum",
+            source_refs=[source_ref],
+            snapshot_id=snapshot_id,
+            snapshot_kind=snapshot_kind,
+            computation_timestamp=captured_at,
+            observed_at=None,
+            deterministic=(mode == "demo"),
+            reasoning=reasoning,
+            deterministic_signature=deterministic_signature,
+        )
+        indicators.append(indicator)
+
+    return indicators
+
+
+def _compute_correlation_indicators(
+    sources: list[dict[str, Any]],
+    mode: str,
+    captured_at: str,
+) -> list[DerivedIndicator]:
+    """Compute correlation indicators between similar time series sources."""
+    indicators = []
+
+    fred_sources = [
+        s for s in sources
+        if isinstance(s, dict) and s.get("type") == "fred"
+    ]
+
+    if len(fred_sources) < 2:
+        return indicators
+
+    for i in range(len(fred_sources) - 1):
+        for j in range(i + 1, min(i + 3, len(fred_sources))):
+            s1 = fred_sources[i]
+            s2 = fred_sources[j]
+
+            p1 = s1.get("preview", {})
+            p2 = s2.get("preview", {})
+            if not isinstance(p1, dict) or not isinstance(p2, dict):
+                continue
+
+            pts1 = p1.get("points", [])
+            pts2 = p2.get("points", [])
+            if not isinstance(pts1, list) or not isinstance(pts2, list):
+                continue
+
+            values1 = [float(pt.get("value", 0)) for pt in pts1 if isinstance(pt, dict) and "value" in pt]
+            values2 = [float(pt.get("value", 0)) for pt in pts2 if isinstance(pt, dict) and "value" in pt]
+
+            min_len = min(len(values1), len(values2))
+            if min_len < 3:
+                continue
+
+            v1 = values1[-min_len:]
+            v2 = values2[-min_len:]
+
+            mean1 = sum(v1) / len(v1)
+            mean2 = sum(v2) / len(v2)
+
+            covariance = sum((x - mean1) * (y - mean2) for x, y in zip(v1, v2)) / len(v1)
+            var1 = sum((x - mean1) ** 2 for x in v1) / len(v1)
+            var2 = sum((y - mean2) ** 2 for y in v2) / len(v2)
+
+            if var1 == 0 or var2 == 0:
+                correlation = 0.0
+            else:
+                correlation = covariance / (var1 ** 0.5 * var2 ** 0.5)
+                correlation = max(-1.0, min(1.0, correlation))
+
+            if abs(correlation) < 0.3:
+                continue
+
+            source_ref1 = f"{s1.get('type')}:{s1.get('id')}"
+            source_ref2 = f"{s2.get('type')}:{s2.get('id')}"
+            pair_key = f"{source_ref1}-{source_ref2}"
+            indicator_id = f"ind-corr-{hashlib.sha256(f"{pair_key}{captured_at}".encode()).hexdigest()[:8]}"
+
+            corr_level = "weak"
+            if abs(correlation) >= 0.7:
+                corr_level = "strong"
+            elif abs(correlation) >= 0.5:
+                corr_level = "moderate"
+
+            direction = "positive" if correlation > 0 else "negative"
+            reasoning = f"Correlation: {correlation:.2f} between {s1.get('id')} and {s2.get('id')} ({corr_level} {direction})"
+
+            indicator_signature_payload = {
+                "indicator_id": indicator_id,
+                "source_1": source_ref1,
+                "source_2": source_ref2,
+                "correlation": round(correlation, 4),
+                "computation_timestamp": captured_at,
+            }
+            deterministic_signature = hashlib.sha256(
+                json.dumps(indicator_signature_payload, sort_keys=True).encode()
+            ).hexdigest()
+
+            indicator = DerivedIndicator(
+                indicator_id=indicator_id,
+                title=f"{s1.get('id')} vs {s2.get('id')} Correlation",
+                value=correlation,
+                unit="coef",
+                display_hint="Pearson correlation (-1 to 1)",
+                computation_kind="correlation",
+                source_refs=[source_ref1, source_ref2],
+                snapshot_id=None,
+                snapshot_kind="derived",
+                computation_timestamp=captured_at,
+                observed_at=None,
+                deterministic=(mode == "demo"),
+                reasoning=reasoning,
+                deterministic_signature=deterministic_signature,
+            )
+            indicators.append(indicator)
+
+    return indicators
+
+
 def _compute_derived_indicators(
     brief_payload: dict[str, Any],
     mode: str,
@@ -499,6 +785,9 @@ def _compute_derived_indicators(
     all_indicators.extend(_compute_spread_indicators(brief_payload, sources, mode, captured_at))
     all_indicators.extend(_compute_trend_bucket_indicators(sources, mode, captured_at))
     all_indicators.extend(_compute_aggregate_freshness_indicator(sources, mode, captured_at))
+    all_indicators.extend(_compute_volatility_indicators(sources, mode, captured_at))
+    all_indicators.extend(_compute_momentum_indicators(sources, mode, captured_at))
+    all_indicators.extend(_compute_correlation_indicators(sources, mode, captured_at))
 
     return all_indicators
 

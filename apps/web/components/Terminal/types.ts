@@ -74,7 +74,7 @@ export type SourceProvenance = {
   snapshot?: SnapshotProvenance | null
 }
 
-export type DerivedIndicatorKind = 'rate_of_change' | 'spread' | 'delta' | 'trend_bucket' | 'aggregate_freshness' | 'conflict_pressure' | 'helper_summary'
+export type DerivedIndicatorKind = 'rate_of_change' | 'spread' | 'delta' | 'trend_bucket' | 'aggregate_freshness' | 'conflict_pressure' | 'helper_summary' | 'volatility' | 'momentum' | 'correlation'
 
 export type DerivedIndicator = {
   indicator_id: string

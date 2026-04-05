@@ -186,7 +186,18 @@ def test_derived_indicator_provenance_completeness():
 
 def test_derived_indicator_kinds():
     """Test that all computation kinds are present and valid"""
-    valid_kinds = {"rate_of_change", "spread", "delta", "trend_bucket", "aggregate_freshness", "conflict_pressure", "helper_summary"}
+    valid_kinds = {
+        "rate_of_change",
+        "spread",
+        "delta",
+        "trend_bucket",
+        "aggregate_freshness",
+        "conflict_pressure",
+        "helper_summary",
+        "volatility",
+        "momentum",
+        "correlation",
+    }
 
     question = "Comprehensive market analysis"
     session_id = "wave21-kinds"
@@ -199,3 +210,98 @@ def test_derived_indicator_kinds():
     for indicator in indicators:
         computation_kind = indicator.get("computation_kind")
         assert computation_kind in valid_kinds, f"Invalid computation kind: {computation_kind}"
+
+
+def test_volatility_indicators_computed():
+    """Test that volatility indicators are computed correctly"""
+    from apps.api.routers.research import _compute_volatility_indicators
+
+    sources = [
+        {
+            "type": "fred",
+            "id": "GDP",
+            "preview": {
+                "points": [
+                    {"date": "2020-01-01", "value": 100.0},
+                    {"date": "2020-04-01", "value": 95.0},
+                    {"date": "2020-07-01", "value": 105.0},
+                    {"date": "2020-10-01", "value": 110.0},
+                ],
+            },
+        },
+    ]
+
+    indicators = _compute_volatility_indicators(sources, "demo", "2026-04-05T00:00:00Z")
+
+    assert len(indicators) > 0
+    assert indicators[0].computation_kind == "volatility"
+    assert indicators[0].unit == "%"
+    assert indicators[0].value > 0  # CV should be positive
+
+
+def test_momentum_indicators_computed():
+    """Test that momentum indicators are computed correctly"""
+    from apps.api.routers.research import _compute_momentum_indicators
+
+    sources = [
+        {
+            "type": "fred",
+            "id": "UNRATE",
+            "preview": {
+                "points": [
+                    {"date": "2020-01-01", "value": 3.5},
+                    {"date": "2020-04-01", "value": 4.0},
+                    {"date": "2020-07-01", "value": 5.0},
+                    {"date": "2020-10-01", "value": 6.0},
+                ],
+            },
+        },
+    ]
+
+    indicators = _compute_momentum_indicators(sources, "demo", "2026-04-05T00:00:00Z")
+
+    assert len(indicators) > 0
+    assert indicators[0].computation_kind == "momentum"
+    assert indicators[0].unit == "%"
+    # Momentum should be positive (growing from 3.5 to 6.0)
+    assert indicators[0].value > 0
+
+
+def test_correlation_indicators_computed():
+    """Test that correlation indicators are computed correctly"""
+    from apps.api.routers.research import _compute_correlation_indicators
+
+    sources = [
+        {
+            "type": "fred",
+            "id": "GDP",
+            "preview": {
+                "points": [
+                    {"date": "2020-01-01", "value": 100.0},
+                    {"date": "2020-04-01", "value": 102.0},
+                    {"date": "2020-07-01", "value": 104.0},
+                    {"date": "2020-10-01", "value": 106.0},
+                ],
+            },
+        },
+        {
+            "type": "fred",
+            "id": "GDPPOT",
+            "preview": {
+                "points": [
+                    {"date": "2020-01-01", "value": 98.0},
+                    {"date": "2020-04-01", "value": 100.0},
+                    {"date": "2020-07-01", "value": 102.0},
+                    {"date": "2020-10-01", "value": 104.0},
+                ],
+            },
+        },
+    ]
+
+    indicators = _compute_correlation_indicators(sources, "demo", "2026-04-05T00:00:00Z")
+
+    assert len(indicators) > 0
+    assert indicators[0].computation_kind == "correlation"
+    assert indicators[0].unit == "coef"
+    # Correlation should be strongly positive for these series
+    assert indicators[0].value > 0.5

@@ -704,7 +704,18 @@ class DerivedIndicator(BaseModel):
     value: float
     unit: str | None = Field(default=None, max_length=32)
     display_hint: str | None = Field(default=None, max_length=200)
-    computation_kind: Literal["rate_of_change", "spread", "delta", "trend_bucket", "aggregate_freshness", "conflict_pressure", "helper_summary"]
+    computation_kind: Literal[
+        "rate_of_change",
+        "spread",
+        "delta",
+        "trend_bucket",
+        "aggregate_freshness",
+        "conflict_pressure",
+        "helper_summary",
+        "volatility",
+        "momentum",
+        "correlation",
+    ]
     source_refs: list[str] = Field(default_factory=list)
     snapshot_id: str | None = Field(default=None, min_length=8, max_length=64)
     snapshot_kind: Literal["fixture", "cache", "live_capture", "derived", "unknown"] | None = None
@@ -735,7 +746,18 @@ class DerivedIndicator(BaseModel):
 
 class DerivedIndicatorProvenance(BaseModel):
     indicator_id: str
-    computation_kind: Literal["rate_of_change", "spread", "delta", "trend_bucket", "aggregate_freshness", "conflict_pressure", "helper_summary"]
+    computation_kind: Literal[
+        "rate_of_change",
+        "spread",
+        "delta",
+        "trend_bucket",
+        "aggregate_freshness",
+        "conflict_pressure",
+        "helper_summary",
+        "volatility",
+        "momentum",
+        "correlation",
+    ]
     source_refs: list[str]
     snapshot_id: str | None = None
     snapshot_kind: Literal["fixture", "cache", "live_capture", "derived", "unknown"] | None = None
